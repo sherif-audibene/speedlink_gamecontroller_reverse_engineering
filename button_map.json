@@ -16,5 +16,15 @@
   "axis2-": "Right-Pad-Right",
   "axis3+": "Right-Pad-Down",
   "axis0-": "Left-Pad-Right",
-  "axis0+": "Left-Pad-Left"
+  "axis0+": "Left-Pad-Left",
+  "stk7": "Right-Stick-Down",
+  "stk6": "Right-Stick-Up",
+  "stk5": "Right-Stick-Left",
+  "stk4": "Right-Stick-Right",
+  "direct:P0.28": "Right-Stick-Click",
+  "direct:P0.29": "Left-Stick-Click",
+  "direct:P0.15": "Rpaid",
+  "stk2": "Left-Stick-Left",
+  "stk1": "Left-Stick-Right",
+  "stk3": "Left-Stick-Up"
 }
