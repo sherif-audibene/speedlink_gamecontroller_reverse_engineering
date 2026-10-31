@@ -39,7 +39,19 @@ Firmware reader `FUN_00003e7c` reads these GPIO IN bits:
 | **P0.10** | **X/D mode switch** ✅ confirmed (NOT a button) |
 | P0.00, P0.14, P0.15, P0.22, P0.28, P0.29 | other direct buttons (not individually mapped; likely D-pad/misc) — but note most didn't respond when bridged, see below |
 
-### B) Multiplexed via **74HC4051** (8-ch analog mux) → ADC — NOT YET WORKING
+### ✅ SOLVED — read buttons via STOCK firmware in RAM (no mux RE needed)
+Don't fight the mux in custom firmware. Flash the **stock** firmware back, let it
+run, and **poll its decoded button state out of RAM over SWD** (AHB reads work
+while the CPU runs — no halt). The stock firmware handles the HC4051 + sticks.
+- Direct buttons bitmask: **`0x2000002c`** (bit set = pressed; see FUN_00003e7c).
+- Mux buttons/sticks bitmask: **`0x20000034`** low 16 bits (see FUN_00003c0c).
+- Mux bits: 0x10=ch0 0x80=ch1 0x40=ch2 0x20=ch3 0x1000=ch4 0x2000=ch5 0x4000=ch6 0x8000=ch7.
+- Direct bits: 0x8=P0.21(Start) 0x1=P0.23(Back) 0x4=P0.28 0x2=P0.29 0x20000=P0.15
+  0x400000=P0.14 0x800000=P0.10(X/D switch) 0x10000=P0.22. **P0.00(0x100000)=stuck-low, ignore.**
+- All 8 mux channels verified switching (ch0..ch7 each respond). Tool: `tools/live_report.py`.
+- Restore+run: `pyocd flash -t nrf51 -f 400k --base-address 0x0 firmware_dump/0x00000000_0x00040000_ROM.bin`
+
+### B) Multiplexed via **74HC4051** (8-ch analog mux) → ADC — (custom-fw path, superseded)
 - Mux: VCC(pin16)=3V ✓, Enable(pin6)=0V ✓ (enabled), common-out **pin3 = 3V idle**.
 - Select lines **S0/S1/S2 = P0.09 / P0.10 / P0.11** (per firmware `FUN_00003c0c`).
 - Mux output → ADC **AIN0 (P0.26)** (`FUN_00002edc(1)`).

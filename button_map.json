@@ -1,0 +1,20 @@
+{
+  "mux:ch6": "A",
+  "mux:ch5": "B",
+  "mux:ch4": "Y",
+  "mux:ch7": "X",
+  "mux:ch1": "Left-Pad",
+  "mux:ch3": "Right-Pad",
+  "mux:ch2": "Down-Pad",
+  "mux:ch0": "Up-Pad",
+  "axis1-": "Left-Pad-Up",
+  "axis1+": "Left-Pad-Down",
+  "axis2+": "Right-Pad-Left",
+  "axis3-": "Right-Pad-Up",
+  "direct:P0.23": "Back",
+  "direct:P0.21": "Start",
+  "axis2-": "Right-Pad-Right",
+  "axis3+": "Right-Pad-Down",
+  "axis0-": "Left-Pad-Right",
+  "axis0+": "Left-Pad-Left"
+}
