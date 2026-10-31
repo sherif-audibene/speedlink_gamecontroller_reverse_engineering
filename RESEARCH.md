@@ -1,7 +1,17 @@
-# Research findings — prior art on Gazell pairing & nRF51 key extraction
+# Research findings — prior art on Gazell pairing & nRF51 firmware dumping
+
+> **CORRECTION (resolved after this doc was written):** Dumping + reversing the firmware
+> showed there is **NO AES key and no crypto of any kind** on this controller — so the
+> "extract the key" / "try the default gzp key" goals below do **not** apply (section 3's
+> `gzp_secret_key[16]` claim is wrong — no such key is in the dump). The RF link is **stock
+> Nordic Gazell with default parameters**; the app-level beacon format is Speedlink's own but
+> unencrypted. The Nano+nRF24 still can't host-sync Gazell, so we read the inputs by
+> reprogramming the chip over SWD instead. See `FIRMWARE_ANALYSIS.md` and `STATUS.md`.
+> The still-useful parts below: the **nrfsec SWD dump** method (section 3) and the Gazell
+> background. Kept for reference.
 
 Searched 2026-10-31. Goal: has anyone cracked a Speedlink gamepad / recreated its lost
-dongle, or reversed Nordic Gazell pairing / extracted the AES key?
+dongle, or reversed Nordic Gazell pairing / extracted a key?
 
 ## Bottom line
 - **Speedlink-specific:** nothing public. No teardown, protocol dump, or dongle recreation
@@ -68,8 +78,9 @@ ATmega168, nothing to buy.
   https://www.pentestpartners.com/security-blog/nrf51822-code-readout-protection-bypass-a-how-to
 - nRF51 SWD can't be fully disabled; readback bypass works regardless of APPROTECT. Not
   glitch-hardened (unlike nRF52) → no voltage glitching needed. Needs ~$3 ST-Link clone.
-- Key lives in flash as `gzp_secret_key[16]`; pairing params at `GZP_PARAMS_STORAGE_ADR`
-  (example `0x00015000`). Both in the dump.
+  **(This part was done successfully with `nrfsec` — the dump is in `firmware_dump/`.)**
+- ~~Key lives in flash as `gzp_secret_key[16]`~~ — **WRONG: the dump contains no key and no
+  crypto at all (see `FIRMWARE_ANALYSIS.md`). There was nothing to extract.**
 
 ## 4. Mousejack / nRF24 tooling (sniff/verify only — does NOT break Gazell crypto)
 - MouseJack: https://www.bastille.net/research/mousejack (unencrypted-HID flaw, N/A to encrypted Gazell)

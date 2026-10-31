@@ -18,9 +18,16 @@ Work done 2026-10-30 / 2026-10-31.
 | CRC | 16-bit, poly `0x1021`, init `0xFFFF` |
 | Channel | **32 (2432 MHz)**; hops a custom table (energy also on ~23,29,31,47,48,59,61,63,65) |
 | Can we receive its packets? | **Yes** (clean, CRC-valid) |
-| Can we ACK it? | **Yes** — and acking keeps the controller awake (stops the pairing timeout/shutdown) |
-| Can we read buttons/sticks? | **No** — input is NOT transmitted until the controller completes pairing |
-| Pairing | **Blocked.** Controller loops a REQUEST/FETCH handshake and ignores all ack-payload content we tried. Most likely **Gazell encrypted pairing** (AES-128 pre-shared key in firmware). |
+| Can we ACK it? | **Yes** — acking keeps the controller awake, but only ever elicits the `5A` poll |
+| Pairing protocol | **Stock Nordic Gazell, NO encryption** (proven by dumping + reversing the firmware — see below). Earlier "AES-128 encrypted pairing" guess was WRONG. |
+| Dongle emulation on the Nano? | **No** — Gazell host-sync is a hard real-time radio MAC the nRF24+ATmega can't perform. (A ~$5 nRF5x running Nordic's stock Gazell host would pair out-of-box.) |
+| Can we read buttons/sticks? | **YES** — not over the Nano radio, but by **reprogramming the controller's nRF51822 over SWD** and reading its decoded state. All buttons + sticks confirmed. See `STATUS.md`. |
+
+> **This README covers the first (RF-sniffing) phase.** The project went much further:
+> dumped the firmware, unlocked the chip, read every input over SWD, and even got a
+> BLE stack running on the controller. **Read `STATUS.md` for the full, current story**
+> and the repository map. The Gazell/AES conclusions in the old "The wall" section
+> below are superseded by `FIRMWARE_ANALYSIS.md` (no crypto, stock Gazell).
 
 ### The two packets the controller sends (unpaired, forever, ~every 1.5 s)
 - 18-byte "request/announce": `E9 74 03 80 00 48 00 00 00 00 DB 01 00 00 00 00 04 45` (constant)
@@ -113,42 +120,46 @@ Python tools need pyserial: `python3 -m venv venv && ./venv/bin/pip install pyse
 
 ---
 
-## The wall & how to get past it
+## What was behind the wall (RESOLVED — the AES theory was wrong)
 
-Pairing is almost certainly **Gazell encrypted pairing**: controller + dongle share an
-**AES-128 key** compiled into both firmwares. The controller won't accept a host that
-can't prove it has the key, so guessing the ack payload cannot work (128-bit secret).
+We dumped the controller's nRF51822 flash over SWD (readback protection bypassed
+non-destructively with `nrfsec`) and reversed it in Ghidra. Findings:
 
-### Path that can actually succeed: extract the key via SWD
-**See `SWD_KEY_EXTRACTION.md` for the full step-by-step, and `hardware/` for the annotated
-solder-point photos** (chip confirmed as `N51822 QFACA1` = nRF51822 QFAC, QFN48; SWDIO=pin23,
-SWDCLK=pin24 at the chip's top-right gold vias).
+- **No encryption anywhere** — no AES, no key, no crypto gate. The earlier "AES-128
+  encrypted pairing" guess in this README was **incorrect**.
+- It's **100% stock Nordic Gazell with default parameters**. "Pairing" is just the
+  Gazell link-layer timeslot sync.
+- The Nano+nRF24 **cannot** perform Gazell host-sync (hard real-time MAC) — so
+  emulating the lost dongle on the Nano is not viable regardless.
 
-The key lives in the **controller's nRF51822 flash**. If factory readback protection
-(APPROTECT) was left disabled (common on cheap peripherals), you can dump the firmware:
+Details in `FIRMWARE_ANALYSIS.md`; the SWD dump procedure in `SWD_KEY_EXTRACTION.md`
+(note: it extracts the *firmware*, not a key — there is none).
 
-1. Get a **$3 ST-Link V2 clone** (or bit-bang SWD from a spare MCU). *(Not a dev board.)*
-2. Find the controller PCB's **SWDIO / SWDCLK / GND / VCC** test pads.
-3. Dump flash with OpenOCD or `nrfjprog`:
-   ```bash
-   # OpenOCD example
-   openocd -f interface/stlink.cfg -f target/nrf51.cfg \
-     -c "init; dump_image controller.bin 0x0 0x40000; exit"
-   ```
-4. Find the Gazell key/host-id in the dump (search for the constants used by the
-   `gzp` library), then plug it into `nrf24_pair` to complete the handshake.
-   If APPROTECT is enabled, readout fails → this route is closed.
+### How we actually read the inputs (works today)
+Reprogrammed the controller over SWD and read its decoded button/stick state out of
+RAM. **All buttons + sticks confirmed.** Full procedure + the live tools
+(`tools/live_report.py`, `tools/mapper_gui.py`) are in `STATUS.md`.
 
-### Alternatives
-- Native Gazell host on an nRF51/nRF52 dev board running Nordic's `gzll_host_pairing`
-  example (may pair out-of-box if stock Gazell). *(User declined buying boards.)*
-- Replacement dongle / controller.
+### Going wireless again
+- **To a PC/Mac/phone:** reflash the nRF51822 as a **BLE HID gamepad** — see
+  `ble_gamepad/` (BLE confirmed working; one motor-buzz blocker documented there).
+- **Original dongle behaviour:** a ~$5 nRF5x running Nordic's stock Gazell host would
+  pair out-of-box (stock Gazell, no custom work).
+- **Not possible on this chip:** PlayStation (Bluetooth *Classic* + Sony auth; nRF51 is BLE-only).
 
 ---
 
-## Resume checklist
+## Current state & restore
+The controller was **restored to stock firmware** at the end of the 2026-10-31 session
+(works normally). To restore it again from the backup:
+```bash
+pyocd flash -t nrf51 -f 400k -e chip --base-address 0x0 \
+   firmware_dump/0x00000000_0x00040000_ROM.bin
+```
+(The chip stays SWD-unlocked — APPROTECT is not re-enabled — so you can reflash anytime.)
+
+## Resume checklist (RF-sniffing phase only; the main story is in `STATUS.md`)
 1. Wire per table, flash `nrf24_pair` for ATmega168 @19200 (see Flashing).
 2. `tools/pairlog.py 15` + power on controller → confirm you still see E974/5A on ch32.
-3. If you obtained the AES key: implement the gzp challenge-response in the ack payload
-   inside `nrf24_pair` (compute response to the FETCH packet), then listen for input
-   packets switching to the post-pairing data address.
+3. For reading inputs or going wireless, don't continue down the Nano path — see
+   `STATUS.md` (SWD readout) and `ble_gamepad/` (BLE).

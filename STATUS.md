@@ -17,6 +17,14 @@ FIRMWARE_ANALYSIS.md, SWD_KEY_EXTRACTION.md, GHIDRA_PLAN.md.
    `firmware_dump/`.
 5. **Mass-erased + unlocked** the chip (`nrfsec erase`) and **flashed custom firmware**;
    read inputs live over the ST-Link.
+6. **Read ALL inputs the easy way:** restored stock firmware and polled its decoded
+   button/stick state out of RAM over SWD (mux solved for free). See the ✅ section
+   under INPUT ARCHITECTURE. Tools: `tools/live_report.py`, `tools/mapper_gui.py`.
+7. **BLE gamepad attempt:** the nRF51822 is a BLE chip, so we reflashed it (S130
+   SoftDevice + a HID-gamepad app built from Nordic's example) to pair directly with
+   a PC/Mac — no dongle. BLE **works** (paired as `Nordic_Mouse`/`Speedlink_Pad`),
+   but a **vibration-motor buzz while connected** is unsolved. Full write-up +
+   firmware in **`ble_gamepad/`**. Controller has been **restored to stock**.
 
 ## Hardware / SWD
 - Chip: **nRF51822 QFAC** (256KB/32KB), SWD pads: **SWDCLK** = big gold test point near
@@ -49,7 +57,7 @@ while the CPU runs — no halt). The stock firmware handles the HC4051 + sticks.
 - Direct bits: 0x8=P0.21(Start) 0x1=P0.23(Back) 0x4=P0.28 0x2=P0.29 0x20000=P0.15
   0x400000=P0.14 0x800000=P0.10(X/D switch) 0x10000=P0.22. **P0.00(0x100000)=stuck-low, ignore.**
 - All 8 mux channels verified switching (ch0..ch7 each respond). Tool: `tools/live_report.py`.
-- Restore+run: `pyocd flash -t nrf51 -f 400k --base-address 0x0 firmware_dump/0x00000000_0x00040000_ROM.bin`
+- Restore+run: `pyocd flash -t nrf51 -f 400k -e chip --base-address 0x0 firmware_dump/0x00000000_0x00040000_ROM.bin`
 
 ### B) Multiplexed via **74HC4051** (8-ch analog mux) → ADC — (custom-fw path, superseded)
 - Mux: VCC(pin16)=3V ✓, Enable(pin6)=0V ✓ (enabled), common-out **pin3 = 3V idle**.
@@ -102,5 +110,33 @@ the specific pins needed and drive the rest low.
 
 ## Restore to stock
 Original firmware backup: `firmware_dump/0x00000000_0x00040000_ROM.bin`.
-Restore: `pyocd flash -t nrf51 -f 500k --base-address 0x0 firmware_dump/0x00000000_0x00040000_ROM.bin`
+Restore: `pyocd flash -t nrf51 -f 400k -e chip --base-address 0x0 firmware_dump/0x00000000_0x00040000_ROM.bin`
 (Note: APPROTECT won't be re-enabled; functionally the controller returns to stock.)
+**The controller was restored to stock at the end of the 2026-10-31 session.**
+
+## Repository map
+- `STATUS.md` (this file), `README.md`, `RESEARCH.md`, `FIRMWARE_ANALYSIS.md`,
+  `SWD_KEY_EXTRACTION.md`, `GHIDRA_PLAN.md` — docs.
+- `firmware_dump/` — original firmware + FICR/UICR/RAM dumps (restore source).
+- `tools/` — PC-side Python (run with the pyocd venv):
+  - `live_report.py` — live button/stick readout from stock firmware's RAM over SWD.
+  - `map_buttons.py` — CLI interactive name-the-controls mapper.
+  - `mapper_gui.py` — tkinter GUI mapper (auto-centers sticks); writes `button_map.json`.
+  - `diag_sticks.py` — find which RAM bytes move when sticks move.
+  - `diag_rest.py` — measure stick rest jitter (proved SWD reads are exact, sticks clean).
+- `button_map.json` — control name → signal map from the GUI mapper.
+- `custom_fw/` — bare-metal nRF51 test firmware (built with Homebrew arm-none-eabi-gcc):
+  - `safe_hold.c/.bin` — drive all pins low (motor OFF). Flash if it ever buzzes.
+  - `muxread.c`, `ainscan.c`, `firmware.c` — early scan experiments.
+  - `diag_float/direct/sel/combo.c` — motor-trigger isolation tests (BLE phase).
+- `ble_gamepad/` — the BLE HID gamepad firmware + S130 SoftDevice + build/flash README
+  (see its README for the motor-buzz blocker and how to finish).
+
+## How to read the controller's buttons/sticks right now (works today)
+1. Ensure stock firmware is flashed (it is).
+2. `pyocd` venv:
+   `/private/tmp/.../scratchpad/venv/bin/python` — or recreate a venv with
+   `pyocd pyusb capstone`.
+3. Run `tools/mapper_gui.py` (needs the ST-Link on SWD). Press buttons / move sticks.
+   RAM: direct buttons `0x2000002c`, mux buttons `0x20000034`, 8 stick-direction
+   bytes `0x2000003c..0x20000043` (rest 0, full push 255).

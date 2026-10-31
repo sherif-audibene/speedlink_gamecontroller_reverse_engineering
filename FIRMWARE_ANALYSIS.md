@@ -1,5 +1,11 @@
 # Firmware dump + analysis (nRF51822)
 
+> **Update:** this analysis (no crypto, stock Gazell) is correct and current. The project
+> then used it to read all inputs by reprogramming the chip over SWD, and to build a BLE
+> gamepad. See `STATUS.md` (input readout) and `ble_gamepad/` (BLE). The "reverse the
+> handshake to emulate the dongle" next-step below was not needed — reading inputs over SWD
+> made dongle emulation unnecessary.
+
 Dumped 2026-10-31 via SWD + `nrfsec` (readback protection bypassed, non-destructive).
 Files in `firmware_dump/`:
 - `0x00000000_0x00040000_ROM.bin` — 256 KB flash (THE firmware; used 0x0..0x3FC14)

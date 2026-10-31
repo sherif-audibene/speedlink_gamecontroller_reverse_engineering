@@ -1,5 +1,10 @@
 # Reversing the pairing handshake in Ghidra
 
+> **SUPERSEDED:** This plan aimed to find "ack bytes to advance pairing" so the Nano could
+> emulate the dongle. The firmware RE showed it's stock Gazell with no crypto, and the
+> Nano can't host-sync Gazell anyway — so this path was dropped. Instead the inputs are read
+> by reprogramming the controller over SWD (see `STATUS.md`). Kept for the Ghidra setup notes.
+
 Goal: find what ACK-payload content the controller (Gazell DEVICE) must receive to leave
 beacon mode and start streaming input. There is NO crypto (confirmed), so it's a plain
 byte/format check — the decompiler just has to show us which bytes.

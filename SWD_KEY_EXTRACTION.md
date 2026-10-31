@@ -1,8 +1,13 @@
-# SWD firmware dump → extract the pairing key
+# SWD firmware dump (the hardware/wiring procedure)
 
-The controller uses a **proprietary protocol** (NOT stock Nordic gzp — see RESEARCH.md),
-so guessing the pairing response can't work. The pairing logic + any key live in the
-controller's **nRF51822** flash. This is the plan to read them out.
+> **CORRECTION (resolved after this doc was written):** There is **NO pairing key** and
+> the protocol is **NOT proprietary** — the firmware dump proved it's **stock Nordic
+> Gazell with default parameters and no encryption** (see `FIRMWARE_ANALYSIS.md`). So the
+> "find the key" / "extract the pairing key" goal below does not apply. The chip was later
+> mass-erased and reprogrammed; inputs are read over SWD (see `STATUS.md`). **This file is
+> kept only for the still-accurate SWD solder points + dump procedure.**
+
+The pairing logic lives in the controller's **nRF51822** flash. This is how we read it out.
 
 Chip confirmed from the board: **`N51822 QFACA1 1503AE`** = nRF51822, **QFAC** variant
 (256 KB flash / 32 KB RAM), QFN48, date 2015-wk03. SWD-programmable ARM Cortex-M0.
