@@ -1,165 +1,147 @@
 # Speedlink Controller Reverse-Engineering (dongle lost)
 
-Reverse-engineering a Speedlink 2.4 GHz wireless gamepad (main chip **nRF51822**)
-whose USB dongle was lost, using an **nRF24L01+PA+LNA** module on an **Arduino Nano**.
-Goal: sniff the controller and eventually re-create a receiver/dongle.
+Reverse-engineering a **Speedlink 2.4 GHz wireless gamepad** (main chip **nRF51822**)
+whose USB dongle was lost. Work done 2026-10-30 / 2026-10-31.
 
-Work done 2026-10-30 / 2026-10-31.
+**This is the master document.** Deeper technical references:
+- `FIRMWARE_ANALYSIS.md` — firmware RE details (memory map, functions, no-crypto proof).
+- `SWD_DUMP.md` — SWD solder points + non-destructive flash-dump procedure.
+- `RF_SNIFFING.md` — RF phase: wiring, flashing, sketches, captures, decode reproduction.
+- `ble_gamepad/README.md` — the BLE HID gamepad firmware (build/flash/status).
+- `RESEARCH.md` — prior-art and external reference links.
 
 ---
 
-## TL;DR status
+## What we achieved
 
-| Item | Result |
+1. **RF fully reverse-engineered** (nRF24L01+PA+LNA sniffer on an Arduino Nano).
+2. **Firmware dumped** over SWD (readback protection bypassed non-destructively) and
+   **reversed in Ghidra** → proved **no encryption, stock Gazell**.
+3. **Chip unlocked** (mass-erase) and **reprogrammed**; **every button + stick read live
+   over SWD** — this is the working way to read the controller today.
+4. **BLE stack brought up** on the controller (pairs with a PC/Mac as a HID gamepad) —
+   one motor-buzz blocker remains (see `ble_gamepad/`).
+5. **Controller restored to stock** at session end (works normally).
+
+---
+
+## RF parameters (confirmed on-air)
+
+| Item | Value |
 |---|---|
-| Protocol | Nordic ESB / **Gazell** (shares radio PHY with nRF24L01+) |
+| Protocol | Nordic ESB / **Gazell** (stock, default params) |
 | Data rate | **2 Mbps** |
-| Address | **01 02 76** (3-byte ESB address) |
+| Address | **01 02 76** (3-byte) |
 | CRC | 16-bit, poly `0x1021`, init `0xFFFF` |
-| Channel | **32 (2432 MHz)**; hops a custom table (energy also on ~23,29,31,47,48,59,61,63,65) |
-| Can we receive its packets? | **Yes** (clean, CRC-valid) |
-| Can we ACK it? | **Yes** — acking keeps the controller awake, but only ever elicits the `5A` poll |
-| Pairing protocol | **Stock Nordic Gazell, NO encryption** (proven by dumping + reversing the firmware — see below). Earlier "AES-128 encrypted pairing" guess was WRONG. |
-| Dongle emulation on the Nano? | **No** — Gazell host-sync is a hard real-time radio MAC the nRF24+ATmega can't perform. (A ~$5 nRF5x running Nordic's stock Gazell host would pair out-of-box.) |
-| Can we read buttons/sticks? | **YES** — not over the Nano radio, but by **reprogramming the controller's nRF51822 over SWD** and reading its decoded state. All buttons + sticks confirmed. See `STATUS.md`. |
+| Channel | **32 (2432 MHz)**, hops a table incl. ~23,29,31,47,48,59,61,63,65 |
+| Gazell defaults | base0 `E7E7E7E7`, base1 `C2C2C2C2`, prefixes `E7 C2..C8` |
 
-> **This README covers the first (RF-sniffing) phase.** The project went much further:
-> dumped the firmware, unlocked the chip, read every input over SWD, and even got a
-> BLE stack running on the controller. **Read `STATUS.md` for the full, current story**
-> and the repository map. The Gazell/AES conclusions in the old "The wall" section
-> below are superseded by `FIRMWARE_ANALYSIS.md` (no crypto, stock Gazell).
+The controller beacons two input-independent packets until a host syncs (~every 1.5 s):
+- 18-byte: `E9 74 03 80 00 48 00 00 00 00 DB 01 00 00 00 00 04 45`
+  (contiguous `E9740380004800000000DB01000000000445`)
+- 1-byte poll: `5A`
 
-### The two packets the controller sends (unpaired, forever, ~every 1.5 s)
-- 18-byte "request/announce": `E9 74 03 80 00 48 00 00 00 00 DB 01 00 00 00 00 04 45` (constant)
-- 1-byte "fetch": `5A`
+(How these were captured/decoded, plus the Nano wiring/flashing and sketches, is in
+`RF_SNIFFING.md`.)
 
-Neither changes with buttons/sticks → the controller is only beaconing for a host.
+**No input is sent until Gazell link-layer sync completes.** The Nano+nRF24 **cannot**
+perform Gazell host-sync (hard real-time MAC), so emulating the lost dongle on the Nano
+is not viable. **There is no key and no crypto** — the early "AES-128 encrypted pairing"
+theory was wrong (disproved by the firmware dump). A ~$5 nRF5x running Nordic's stock
+Gazell host would pair out-of-box; we instead read inputs directly over SWD.
 
 ---
 
-## Hardware
+## Hardware / SWD
 
-- **Board:** grey-clone "Arduino Nano" — actually an **ATmega168** (sig `1E 94 06`), 14 KB flash / 1 KB RAM. CH340 USB (VID 1a86 / PID 7523).
-- **Radio:** nRF24L01+PA+LNA (SMA antenna) on the HW-200 breakout adapter.
-
-### Wiring (adapter label → Nano pin)
-| Adapter | Nano | | Adapter | Nano |
-|---|---|---|---|---|
-| VCC | **5V** (adapter regulates to 3.3V) | | MO (MOSI) | D11 |
-| GND | GND | | MI (MISO) | D12 |
-| CE | D9 | | SCK | D13 |
-| CSN | D10 | | IRQ | (unused) |
-
-All sketches use SPI @ 4 MHz (reliable over dupont wires to a PA+LNA module; 10 MHz default fails).
+- **Chip:** `N51822 QFACA1` = **nRF51822 QFAC**, QFN48, 256 KB flash / 32 KB RAM,
+  Cortex-M0. Device ID `45D963F4 C3CF04FB`.
+- **SWD:** ST-Link V2 clone, 4 wires (SWDIO, SWDCLK, GND, 3.3 V). Solder points in
+  `SWD_DUMP.md` + `hardware/` photos. **Run pyocd at `-f 400k`** — the hand-soldered
+  link is flaky at higher speeds; reseat wires / replug the ST-Link on "Target not
+  detected". A soldered header would make this far more reliable.
+- **Sniffer (RF phase):** nRF24L01+PA+LNA on an Arduino Nano — note it's actually an
+  **ATmega168** (bootloader @ **19200 baud**, flash with `cpu=atmega168 -b 19200`).
+  Wiring + sketch details are in `arduino/` and the sketch headers.
 
 ---
 
-## Flashing (this specific clone) — IMPORTANT
+## Reading the buttons & sticks (works today)
 
-Standard `arduino:avr:nano` **fails** ("not in sync") because it's a 168, not a 328,
-and its bootloader runs at **19200 baud**. Use:
+The stock firmware decodes every input into RAM; we poll it over SWD. The ⚠️ mux that
+blocked our *custom* firmware is handled for free by the controller's own code.
 
-```bash
-# compile for ATmega168
-arduino-cli compile --fqbn arduino:avr:nano:cpu=atmega168 --output-dir BUILD arduino/<sketch>
-
-# upload (find port with: ls /dev/cu.wchusbserial* /dev/cu.usbserial*)
-AV=~/Library/Arduino15/packages/arduino/tools/avrdude/8.0.0-arduino1/bin/avrdude
-CONF=~/Library/Arduino15/packages/arduino/tools/avrdude/8.0.0-arduino1/etc/avrdude.conf
-"$AV" -C "$CONF" -c arduino -p atmega168 -P /dev/cu.usbserial-XXXX -b 19200 -D \
-   -U flash:w:BUILD/<sketch>.ino.hex:i
+Run with the pyocd venv and the ST-Link connected:
+```
+<venv>/bin/python tools/mapper_gui.py      # GUI: press controls, name them -> button_map.json
+<venv>/bin/python tools/live_report.py     # plain live readout
 ```
 
-macOS note: a sandbox can hide `/dev/cu.*` from shell globbing; use `/bin/ls /dev/cu.*`
-or pyserial to enumerate. The port sometimes re-enumerates as `usbserial-1110` vs
-`wchusbserial1110` — both are the same device.
+**Input architecture / RAM map (stock firmware):**
 
-Python tools need pyserial: `python3 -m venv venv && ./venv/bin/pip install pyserial`.
+| What | Where / how |
+|---|---|
+| Direct-GPIO buttons | word `0x2000002c`, bit set = pressed |
+| Mux buttons (HC4051) | word `0x20000034` (low 16 bits), bit set = pressed |
+| Stick directions | 8 bytes `0x2000003c..0x20000043`, **rest 0, full push 255** |
+
+- Direct bits: `0x8`=P0.21(Start) `0x1`=P0.23(Back) `0x4`=P0.28 `0x2`=P0.29
+  `0x20000`=P0.15 `0x400000`=P0.14 `0x800000`=P0.10(X/D switch) `0x10000`=P0.22.
+  **P0.00 (`0x100000`) reads stuck-low — ignore, not a button.**
+- Mux bits: `0x10`=ch0 `0x80`=ch1 `0x40`=ch2 `0x20`=ch3 `0x1000`=ch4 `0x2000`=ch5
+  `0x4000`=ch6 `0x8000`=ch7 (face buttons / d-pad / shoulders).
+- Sticks are 2 analog sticks on **AIN4..7 = P0.03..P0.06** (8 direction bytes).
+- The mux is driven by selects **P0.09 / P0.10 / P0.11**, output on **AIN0 = P0.26**.
+  Note P0.10 is time-shared as both select-S1 and the X/D switch (why our static custom
+  firmware couldn't switch the mux but the stock firmware can).
+
+(SWD memory reads are exact — verified the stick rest jitter is 0; any noise would be
+real analog, not our reads.)
 
 ---
 
-## Arduino sketches (`arduino/`)
+## Going wireless again
 
-| Sketch | Purpose |
-|---|---|
-| `nrf24_diag` | Raw SPI connectivity test (reads CONFIG, write/readback). Use if "radio not found". |
-| `nrf24_rpd` | Fast channel-activity scanner (RPD/carrier). Finds which channels are busy. |
-| `nrf24_scanner` | Promiscuous sniffer (2-byte-address trick). Last configured: park on ch32 @ 2M. |
-| `nrf24_addr` | Tries common ESB default addresses with CRC on (all missed — address is custom). |
-| `nrf24_rx` | Proper ESB receiver on addr 010276, auto-ack ON. First showed the `5A` packet. |
-| `nrf24_pair` | **Pairing harness v2.** PRX on 010276, configurable ack payload via serial. Main tool for handshake attempts. Serial cmds: `K<hex>` ack payload, `KA/KF<hex>` per-packet, `C<n>` channel, `D<hex>` 2nd data addr, `P` print cfg, `Z` reset counters. |
+- **PC / Mac / phone:** reflash the nRF51822 as a **BLE HID gamepad** — see
+  `ble_gamepad/`. BLE is confirmed working; a vibration-motor buzz while connected is the
+  one open blocker (documented there with the diagnostics and the likely fix).
+- **PlayStation:** not possible on this chip — PS uses Bluetooth *Classic* + Sony auth;
+  the nRF51 is BLE-only. (A USB bridge via an ESP32-S3 would be the PS path.)
 
 ---
 
-## Host tools (`tools/`, run with the venv python)
+## Repository map
 
-| Script | What it does |
-|---|---|
-| `readserial.py [sec]` | Dump raw serial lines. |
-| `aggscan.py [sec] [label]` | Aggregate `nrf24_rpd` output into a per-channel activity histogram (saves `<label>.json`). |
-| `decode_ch32.py [sec] [label]` | Capture promiscuous `nrf24_scanner` output and CRC-recover packets for address **010276** (the decoder that cracked it). |
-| `broad_decode.py [sec]` | Same but recovers ANY address (3/4/5-byte) — finds other packet types. |
-| `pairlog.py [sec] [cmds...]` | With `nrf24_pair`: log the handshake sequence with timestamps. Extra args are serial cmds, e.g. `pairlog.py 15 "KAABBCCDDEE"`. |
-| `sweep.py` | Sweep a list of candidate ack payloads, report any NEW packet types. |
-| `sustain.py [ackhex] [sec]` | Sustained acking with one payload while you press buttons; watch for new packets/input. |
+- `firmware_dump/` — original firmware + FICR/UICR/RAM dumps (restore source).
+- `tools/` — PC-side Python (run with a pyocd venv):
+  - `mapper_gui.py` — tkinter GUI control-mapper → `button_map.json`.
+  - `live_report.py` — live button/stick readout over SWD.
+  - `map_buttons.py` — CLI interactive mapper.
+  - `diag_sticks.py`, `diag_rest.py` — stick-location / rest-jitter diagnostics.
+  - RF-phase scripts: `decode_ch32.py` (cracked the address), `broad_decode.py`,
+    `aggscan.py`, `pairlog.py`, `sweep.py`, `sustain.py`, `readserial.py`.
+- `arduino/` — nRF24 sniffer/receiver/pairing sketches (RF phase).
+- `custom_fw/` — bare-metal nRF51 test firmware (Homebrew arm-none-eabi-gcc):
+  `safe_hold` (all pins low — flash if it ever buzzes), scan experiments,
+  `diag_float/direct/sel/combo` (BLE-phase motor-trigger isolation tests).
+- `ble_gamepad/` — BLE HID gamepad firmware + S130 SoftDevice + build/flash README.
+- `captures/`, `hardware/` — RF captures and annotated board photos.
+- `button_map.json` — control-name → signal map from the GUI mapper.
 
-### Reproduce the key decode
-```bash
-# flash nrf24_scanner (currently parks on ch32 @ 2M), controller ON near antenna, then:
-./venv/bin/python tools/decode_ch32.py 20 test
-# -> recovers addr 010276, 18-byte payload E9740380004800000000DB01000000000445
+### Build / flash quick reference
+- **Bare-metal custom_fw:** `arm-none-eabi-gcc -mcpu=cortex-m0 -mthumb -nostdlib
+  -nostartfiles -ffreestanding -Os -T custom_fw/nrf51.ld X.c -o X.elf && objcopy -O
+  binary X.elf X.bin` ; `pyocd flash -t nrf51 -f 400k --base-address 0x0 X.bin`.
+  (Homebrew gcc has no C library — fine for bare-metal, not for the SDK.)
+- **BLE firmware:** needs nRF5 SDK 12.3 + Arm gcc 10.3 (newlib) — see `ble_gamepad/README.md`.
+
+### Restore to stock (undo everything)
 ```
-
----
-
-## Captures (`captures/`)
-- `cap.txt` — first broad hopping capture (2M+1M, all channels).
-- `cap1m_on.txt` — parked hot-channels @1M, controller on (showed smeared = wrong rate).
-- `ch32_2m.txt` — ch32 @ 2M, controller on — **the clean capture that gave address + payload**.
-- `baseline_off.json`, `near.json` — RPD channel-activity histograms (controller off vs near).
-
----
-
-## What was behind the wall (RESOLVED — the AES theory was wrong)
-
-We dumped the controller's nRF51822 flash over SWD (readback protection bypassed
-non-destructively with `nrfsec`) and reversed it in Ghidra. Findings:
-
-- **No encryption anywhere** — no AES, no key, no crypto gate. The earlier "AES-128
-  encrypted pairing" guess in this README was **incorrect**.
-- It's **100% stock Nordic Gazell with default parameters**. "Pairing" is just the
-  Gazell link-layer timeslot sync.
-- The Nano+nRF24 **cannot** perform Gazell host-sync (hard real-time MAC) — so
-  emulating the lost dongle on the Nano is not viable regardless.
-
-Details in `FIRMWARE_ANALYSIS.md`; the SWD dump procedure in `SWD_KEY_EXTRACTION.md`
-(note: it extracts the *firmware*, not a key — there is none).
-
-### How we actually read the inputs (works today)
-Reprogrammed the controller over SWD and read its decoded button/stick state out of
-RAM. **All buttons + sticks confirmed.** Full procedure + the live tools
-(`tools/live_report.py`, `tools/mapper_gui.py`) are in `STATUS.md`.
-
-### Going wireless again
-- **To a PC/Mac/phone:** reflash the nRF51822 as a **BLE HID gamepad** — see
-  `ble_gamepad/` (BLE confirmed working; one motor-buzz blocker documented there).
-- **Original dongle behaviour:** a ~$5 nRF5x running Nordic's stock Gazell host would
-  pair out-of-box (stock Gazell, no custom work).
-- **Not possible on this chip:** PlayStation (Bluetooth *Classic* + Sony auth; nRF51 is BLE-only).
-
----
-
-## Current state & restore
-The controller was **restored to stock firmware** at the end of the 2026-10-31 session
-(works normally). To restore it again from the backup:
-```bash
 pyocd flash -t nrf51 -f 400k -e chip --base-address 0x0 \
    firmware_dump/0x00000000_0x00040000_ROM.bin
 ```
-(The chip stays SWD-unlocked — APPROTECT is not re-enabled — so you can reflash anytime.)
+The chip stays SWD-unlocked (APPROTECT not re-enabled), so you can reflash anytime.
 
-## Resume checklist (RF-sniffing phase only; the main story is in `STATUS.md`)
-1. Wire per table, flash `nrf24_pair` for ATmega168 @19200 (see Flashing).
-2. `tools/pairlog.py 15` + power on controller → confirm you still see E974/5A on ch32.
-3. For reading inputs or going wireless, don't continue down the Nano path — see
-   `STATUS.md` (SWD readout) and `ble_gamepad/` (BLE).
+⚠️ **Motor safety:** the vibration-motor driver engages when control pins float/pull-up.
+Keep pins driven low. `custom_fw/safe_hold.bin` guarantees the motor off — flash it if
+anything ever buzzes.
