@@ -106,3 +106,43 @@ The Nano is now the working host (`arduino/nrf24_host`, `PAIRING_PROTOCOL.md`).
 
 *Lesson: a hardware-capability conclusion drawn from experiments on the wrong
 parameters isn't evidence. Verify the parameters from the live device first.*
+
+## Next project (TODO): passive on-air sniffer with esp-sdr
+
+Idea: watch the live **controller ↔ Nano** link with an ordinary ESP32 board running
+[esp-sdr](https://github.com/ESPARGOS/esp-sdr). It turns the ESP32's own Wi-Fi/BT radio
+into an I/Q receiver and streams to a PC. **It is receive-only, so it can't replace the
+Nano**: the controller needs ack payloads on every packet. As a passive observer, though,
+it fits this setup well.
+
+Why it should work:
+- The patched controller **doesn't hop**: everything is on **ch32 = 2432 MHz**, both the
+  controller's packet and the Nano's ack (~0.65 ms later). One fixed tune sees both sides.
+- A packet is ~1 ms at 250 kbps. esp-sdr snapshots are ≤16 380 samples with gaps, so use a
+  **low sample rate** (4 MS/s → ~4 ms per snapshot = packet + ack). Per the esp-sdr chip
+  table only **ESP32-C5 / C61 / S31** go down to 4 MS/s. At ≥16 MS/s a snapshot (≤1 ms)
+  mostly catches fragments. Some chips stream continuously over native USB.
+
+What it would answer:
+- The **Nano's ack payloads on air**: confirm `01+hostID` / `02+hostID+ownID` / `04…` and the
+  step-4 rumble bytes (`PAIRING_PROTOCOL.md` §2, §5).
+- **Retransmits and losses** via the ESB PID. Why is it sometimes ~96 reports/s instead of ~180?
+- Timing (packet → ack gap, report period) and other 2.4 GHz traffic near ch32.
+- Maybe the unexplained `01 02 76` / `E9 74 …` traffic (`PAIRING_PROTOCOL.md` §7) with a
+  wider, rate-agnostic look.
+
+Decoder plan (PC side, ~100 lines numpy or GNU Radio):
+1. Quadrature (FM) demod → slice at 250 kbps with clock recovery.
+2. Search for the preamble + address: `0F6716E7E7` (stream), `C6C2C1E7E7` (pair),
+   `EFCDABE7E7` (confirm). Mind the on-air byte/bit order.
+3. Parse the ESB frame: 9-bit PCF (6-bit length, 2-bit PID, no-ack bit) → payload → CRC16
+   (poly `0x11021`, init `0xFFFF`, over address + PCF + payload, bit-aligned). A passing
+   CRC proves the decode.
+
+Status: **not started**. First step: pick a supported ESP32 board (C5/C61/S31 preferred),
+flash esp-sdr, take a capture at 2432 MHz while `nrf24_host` is streaming, and check that
+bursts are visible.
+
+Simpler fallback: a **second nRF24** listening on `0F6716E7E7`, ch32, 250 kbps, with
+**auto-ack off**. The chip decodes for you, but it only shows CRC-valid packets: no noise,
+collisions or fragments.

@@ -194,6 +194,8 @@ Restore stock: same command with `firmware_dump/0x00000000_0x00040000_ROM.bin`.
 - Following the LFSR hop sequence (instead of pinning ch32) for interference robustness.
 - Full input-report map; then a PC side (serial → virtual gamepad), since the ATmega168
   Nano can't be a USB HID device.
+- **Next project:** passive on-air sniffer of the controller ↔ Nano link with an ESP32 running
+  esp-sdr (receive-only, so not a Nano replacement). Plan: `RF_SNIFFING.md` → "Next project".
 - **Right stick and triggers** changed none of the six RAM axis values in the
   2026-11-01 `stick_probe.py` test. Explained by the code (D-mode digital sub-mode + triggers stored
   elsewhere, see `FIRMWARE_FUNCTIONS.md`). Not yet confirmed on hardware by toggling Home.
