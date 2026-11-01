@@ -38,6 +38,8 @@ def main():
     s = ConnectHelper.session_with_chosen_probe(target_override="nrf51", frequency=400000,
                                                 connect_mode="attach")
     s.open(); t = s.board.target
+    xd = t.read32(0x2000002c) & 0x800000  # X/D mode switch (P0.10), direct-button bit
+    print(f"X/D switch bit (0x800000) = {1 if xd else 0}")
     rows = []
     for m in MOVES:
         input(f"\n>> {m}: press Enter, then hold it ")
