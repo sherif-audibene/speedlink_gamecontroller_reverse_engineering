@@ -4,7 +4,11 @@ All **255 Ghidra functions** of `firmware_dump/0x00000000_0x00040000_ROM.bin`, p
 regions Ghidra hasn't defined as functions yet. Produced 2026-11-01 by five parallel
 read-only Ghidra passes (one per address range). The key claims were then cross-checked by hand
 (see "Verified / corrected"). Every row has a **confidence** (high / med / low). Treat low as a lead,
-not a fact. Ghidra names are unchanged (`FUN_xxxxxxxx`); "Suggested name" is documentation only.
+not a fact. **These names are applied in the Ghidra project** (`speedlink.rep`, 2026-11-01).
+The exact mapping is in `tools/ghidra_names.json`; reapply it with `tools/apply_ghidra_names.py`.
+Differences from the "Suggested name" column: low confidence → `_maybe` suffix; Gazell-core
+duplicates of API names → `gzll_core_` prefix; `0x2c50` → `gzll_queue_callback_event`;
+`0x2edc` → `ADC_ReadChannel`, `0x4074` → `GPIO_InitPins` (the plugin rejected the generic names).
 
 Related: `FIRMWARE_ANALYSIS.md` (overview, no-crypto proof), `PAIRING_PROTOCOL.md` (radio
 link + the Nano dongle), `README.md` (input RAM map, hardware).
