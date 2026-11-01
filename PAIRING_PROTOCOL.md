@@ -179,8 +179,9 @@ Restore stock: same command with `firmware_dump/0x00000000_0x00040000_ROM.bin`.
 - ~~`0x698c` / `0x69c0` raw TX/RX~~ **Resolved:** the hidden RF test mode (Start+Home+Back at
   power-on) uses Nordic `radio_test` modulated / constant-carrier TX. ~~Two startup paths~~
   **Resolved:** `0x4700` is the only normal setup; `0x4f50` is test mode 3.
-- **⚠️ Bond-wipe risk:** the "latch-off" power-down state (`0x38bc`, reached e.g. by holding Home
-  ~3.3 s) rewrites the bond record with **host ID 0**. With the strict lock the controller would then
+- **⚠️ Bond-wipe risk:** the "latch-off" power-down state (`0x38bc`) rewrites the bond record with
+  **host ID 0**. On battery it is reached by **holding Home ~3.3 s to switch off**, the normal off
+  gesture (`FIRMWARE_FLOW.md` §3, medium confidence). With the strict lock the controller would then
   never pair with the Nano until it's reflashed. Proposed 4-byte fix: NOP `bl 0x3ab0` at `0x3908`
   (not applied yet). Details: `FIRMWARE_FUNCTIONS.md`.
 - Pipe 0 on the host: untested since the halt bug (section 6.4).

@@ -86,10 +86,14 @@ The bond record (`0x3FC00`) is **rewritten by the firmware itself** (`0x3ab0` = 
   `[sp+0]=0`, `[sp+4]=0`, then `bl 0x3ab0`). With the strict lock (`0x4860`/`0x4866` NOPs), the next boot
   compares every reply against host 0, so **the controller would never pair with the Nano again** until
   it is reflashed.
-- **How it's reached:** holding **Home ~3.3 s while on** (or idle / pairing timeout / low battery) → power-down
-  states. Line P0.00 (probably charger/USB detect, low–med confidence) picks state 5 vs 6.
-- **Proposed fix (not applied, untested):** in `tools/make_locked_rom.py`, NOP the `bl 0x3ab0` at
-  `0x3908` (4 bytes → `00 bf 00 bf`). State 6 then leaves flash untouched and the `ABCDEF` record stays.
+- **How it's reached** (jump table `0x4a7e` decoded by hand, medium confidence; see `FIRMWARE_FLOW.md` §3):
+  **on battery, holding Home ~3.3 s to switch off goes state 4 → 6 directly.** That is the normal
+  power-off gesture. Idle / pairing timeouts go to state 5 (deep sleep), which keeps the host ID.
+  Stock firmware doesn't care, because it re-learns any host after a wipe. That's why the stock dump has host 0.
+- **Proposed fixes (not applied, untested):**
+  - In `tools/make_locked_rom.py`, NOP the `bl 0x3ab0` at `0x3908` (4 bytes → `00 bf 00 bf`). State 6
+    then leaves flash untouched and the `ABCDEF` record stays.
+  - Or build with `--soft` (no strict lock): after a wipe the controller re-learns `ABCDEF` from the Nano.
   **Recovery if it happens:** reflash `speedlink_locked_ABCDEF.bin`.
 
 ## Not yet defined in Ghidra (worth `create_function` in a later pass)

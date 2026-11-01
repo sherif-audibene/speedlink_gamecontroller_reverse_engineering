@@ -7,6 +7,8 @@ whose USB dongle was lost. Work done 2026-10-30 → 2026-11-01.
 - `PAIRING_PROTOCOL.md` — **the working dongle replacement**: pairing handshake, channel
   hopping, firmware patches, the Nano host, and the debugging journey (day 3).
 - `FIRMWARE_ANALYSIS.md` — firmware RE details (memory map, functions, no-crypto proof).
+- `FIRMWARE_FLOW.md` — **flowcharts** of the ROM logic: boot/main loop, layers, power states,
+  pairing, input pipeline (Mermaid, renders on GitHub).
 - `FIRMWARE_FUNCTIONS.md` — **all 255 firmware functions** with suggested names, evidence and
   confidence. Also covers boot/main loop, subsystems, the hidden RF test mode and a bond-wipe risk for the locked image.
 - `SWD_DUMP.md` — SWD solder points + non-destructive flash-dump procedure.
@@ -92,7 +94,7 @@ and `REP …` lines that change as you press buttons.
 |---|---|
 | Ticks stay `81:0 82:0 84:0` | Controller off or not latched on. Hold Home ~3 s, or power-cycle |
 | `known ownID=0` while the controller is already streaming | Power-cycle the controller so it pairs again from step 1 |
-| Used to work, now never pairs | Probably the **bond wipe** after a long Home press (`FIRMWARE_FUNCTIONS.md`). Redo step 2 |
+| Used to work, now never pairs | **Bond wipe**: switching off by holding Home (on battery) saves host ID 0 (`FIRMWARE_FLOW.md` §3). Redo step 2. Until it's fixed, let the controller idle off instead |
 | pyocd "Target not detected" / timeout | Reseat the SWD wires, replug the ST-Link, keep `-f 100k` |
 | Never monitor with pyocd's default connect | It halts the CPU and the radio goes silent. The repo tools use `connect_mode="attach"` |
 
