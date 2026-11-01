@@ -53,6 +53,9 @@ All IDs are 3 bytes, little-endian (`FUN_00002e24`).
   failure. Step 4 drops back after >16 failed rounds (~0.2 s). The reset is done by `FUN_00004174`.
 - Step-4 ack: if b1 bit0 is set 60+ times in a row, the controller sets pairing-struct `+9`
   (meaning unknown, maybe a sleep request). Our host always sends 0.
+- **Step-4 ack bytes 3 and 4 = rumble** duty for the two motors (P0.24/P0.25 PWM, via
+  `FUN_00004910` → `0x20000094/95`). Our host sends 0 (motors off). A host could drive rumble
+  through these two bytes (untested).
 
 Pairing struct at `0x20000004`: `+0` current channel, `+1` state, `+2` step-4 fail counter,
 `+3` bonded flag, `+0xC` u16 strict-window timer, `+0xE..0x10` hop LFSR, `+0x14` own ID,
@@ -124,12 +127,18 @@ Restore stock: same command with `firmware_dump/0x00000000_0x00040000_ROM.bin`.
 ### Input report (`REP` = 20 bytes after the `84` type byte; preliminary)
 `18 | 01 LX LY RX RY B1 B2 00 …`
 - `18`: the flags byte the firmware builds (`x<<4 | (y&3)<<2 | struct[8]`), not input.
-- `01`: constant (report ID?).
-- 4 stick axes, `0x80` = centre (one went to `FF` at full deflection). This matches the
-  SWD RAM axes (low bytes at `0x2000003c..`, rest 128).
-- `B1`: low nibble `F` at rest (d-pad hat?); high bits `10/20/40/80` = buttons.
-- `B2`: `10`, `20` seen = more buttons.
-- The full button/axis map is still to do.
+  Bits 2..3 carry the power state (`0x2000011a`).
+- The 19-byte report is built by `FUN_00002ffc` at `0x200001a0`. Its layout depends on the **X/D
+  switch** (decoded from code, see `FIRMWARE_FUNCTIONS.md` §3; only D mode has been seen on air):
+  - **D mode** (our controller): `01 | LX LY RX RY | b5 | b6 | b7 | L2 R2 pressure`.
+    - b5 = hat (low nibble, `F` = centre) + `10` A/✕, `20` B/○, `40` X/□, `80` Y/△.
+    - b6 = `01` L1, `02` R1, `04` L2, `08` R2, `10` Back/Select, `20` Start, `40` L3, `80` R3.
+    - b7 = `01` Home.
+  - **X mode:** `00 14 | b2 | b3 | LT RT | LX LY RX RY` (int16 LE), XInput-style.
+  - In D mode a **digital sub-mode** (default on, **Home toggles it**) maps the right stick onto
+    face buttons and forces RX/RY = `0x80`, so turn it off for an analog right stick.
+- Matches what we saw: `REP 18 | 01 80 80 80 80 0F 00` at rest. `0F`→`8F`/`2F`/`4F` = face
+  buttons; `B2` `10`/`20` = Back/Start.
 
 ## 6. The journey: wrong turns and lessons
 
@@ -167,14 +176,20 @@ Restore stock: same command with `firmware_dump/0x00000000_0x00040000_ROM.bin`.
   Packets did appear on the Nano shortly after the controller was powered on, so the
   controller isn't ruled out. Possibly another firmware path (two startup paths exist,
   `FUN_00004f50` vs `FUN_00004700`), or another nearby 2.4 GHz device.
-- `0x698c` / `0x69c0` start raw RADIO TX/RX (frequency, power, mode, `TASKS_TXEN/RXEN`),
-  reached via `FUN_00004cd0`. Probably a factory test mode. Not analysed further.
+- ~~`0x698c` / `0x69c0` raw TX/RX~~ **Resolved:** the hidden RF test mode (Start+Home+Back at
+  power-on) uses Nordic `radio_test` modulated / constant-carrier TX. ~~Two startup paths~~
+  **Resolved:** `0x4700` is the only normal setup; `0x4f50` is test mode 3.
+- **⚠️ Bond-wipe risk:** the "latch-off" power-down state (`0x38bc`, reached e.g. by holding Home
+  ~3.3 s) rewrites the bond record with **host ID 0**. With the strict lock the controller would then
+  never pair with the Nano until it's reflashed. Proposed 4-byte fix: NOP `bl 0x3ab0` at `0x3908`
+  (not applied yet). Details: `FIRMWARE_FUNCTIONS.md`.
 - Pipe 0 on the host: untested since the halt bug (section 6.4).
 - Following the LFSR hop sequence (instead of pinning ch32) for interference robustness.
 - Full input-report map; then a PC side (serial → virtual gamepad), since the ATmega168
   Nano can't be a USB HID device.
 - **Right stick and triggers** changed none of the six RAM axis values in the
-  2026-11-01 `stick_probe.py` test (README "Input architecture"). Check before mapping the report.
+  2026-11-01 `stick_probe.py` test. Explained by the code (D-mode digital sub-mode + triggers stored
+  elsewhere, see `FIRMWARE_FUNCTIONS.md`). Not yet confirmed on hardware by toggling Home.
 
 ## 8. Tools added in this phase
 | Tool | Purpose |

@@ -1,7 +1,8 @@
 # Firmware analysis (nRF51822)
 
 Technical reference for the dumped stock firmware. For the overall story see `README.md`;
-for how the dump was taken see `SWD_DUMP.md`.
+for how the dump was taken see `SWD_DUMP.md`. **Per-function reference for all 255 functions:
+`FIRMWARE_FUNCTIONS.md`.**
 
 Dump files in `firmware_dump/`:
 - `0x00000000_0x00040000_ROM.bin` — 256 KB flash (the firmware; code+data occupy ~27 KB)
@@ -42,9 +43,10 @@ not part of this link (origin unexplained).
 ## Peripheral / code map
 - RADIO base `0x40001000` (config block `0x40001500`); RNG `0x4000D000`.
   ECB/CCM/AAR present in silicon but **unused**.
-- `0x698c` / `0x69c0` (reached via `FUN_00004cd0`) are **raw radio TX/RX starters**
-  (set FREQUENCY/TXPOWER/MODE, then `TASKS_TXEN`/`RXEN`), probably a factory test mode,
-  not the Gazell driver. An earlier note called this region "the radio driver" and claimed it
+- `0x698c` / `0x69c0` (reached via `FUN_00004cd0`) are Nordic `radio_test` helpers:
+  **modulated TX with a random payload** / **constant-carrier TX** (`RADIO.TEST=3`). They belong to
+  a hidden **RF test mode** (hold Start+Home+Back at power-on; see `FIRMWARE_FUNCTIONS.md`),
+  not to the Gazell driver. An earlier note called this region "the radio driver" and claimed it
   derived the address `01:02:76` from FICR at `0x6c72`/`0x6c82`. That was wrong: `0x6c40..`
   is a literal pool. The real ID derivation is `FUN_00004158`: own ID =
   `(FICR.DEVICEID[0] ^ DEVICEID[1]) & 0xFFFFFF` = `0x16670F`.
@@ -63,7 +65,9 @@ not part of this link (origin unexplained).
 | `FUN_00004158` | own ID from FICR DEVICEID |
 | `FUN_000041c4` / `FUN_00003a78` | load the bond record from the last flash page `0x3FC00` |
 | `FUN_00002e24` | read a little-endian 24-bit ID |
-| `FUN_00004f50` / `FUN_00004700` | two startup paths that configure Gazell + pairing address (difference not analysed) |
+| `FUN_00004700` / `FUN_00004f50` | Gazell + pairing-address setup: `0x4700` = the normal boot path, `0x4f50` = RF test mode 3 only |
+| `FUN_00005a50` | `main` (boot: Reset `0x154` → SystemInit `0x4edc` → C runtime start-up → thunk `0xc8`) |
+| `0x3ab0` (no Ghidra function) | **bond record save**: erase page `0x3FC00`, write 3 words + magic. Called at power-down (states 5/6) |
 
 ## Input scan (how the inputs are decoded)
 Reimplemented/ported for the custom firmware and verified live over SWD.

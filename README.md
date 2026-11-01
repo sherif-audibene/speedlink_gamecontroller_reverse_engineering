@@ -7,6 +7,8 @@ whose USB dongle was lost. Work done 2026-10-30 → 2026-11-01.
 - `PAIRING_PROTOCOL.md` — **the working dongle replacement**: pairing handshake, channel
   hopping, firmware patches, the Nano host, and the debugging journey (day 3).
 - `FIRMWARE_ANALYSIS.md` — firmware RE details (memory map, functions, no-crypto proof).
+- `FIRMWARE_FUNCTIONS.md` — **all 255 firmware functions** with suggested names, evidence and
+  confidence. Also covers boot/main loop, subsystems, the hidden RF test mode and a bond-wipe risk for the locked image.
 - `SWD_DUMP.md` — SWD solder points + non-destructive flash-dump procedure.
 - `RF_SNIFFING.md` — the first RF phase: wiring, flashing, sketches, captures (with notes
   on what it got wrong).
@@ -99,22 +101,30 @@ image, since the patches don't touch input decoding:
 | What | Where / how |
 |---|---|
 | Direct-GPIO buttons | word `0x2000002c`, bit set = pressed |
-| Mux buttons (HC4051) | word `0x20000034` (low 16 bits), bit set = pressed |
+| All buttons, debounced | word `0x20000034`: direct + mux + trigger bits, bit set = pressed (full map in `FIRMWARE_FUNCTIONS.md` §3) |
 | Stick axes | 6 × u16 LE at `0x2000003c..0x47`; value **0..255 in the low byte, rest 128** |
 
 - Direct bits: `0x8`=P0.21(Start) `0x1`=P0.23(Back) `0x4`=P0.28 `0x2`=P0.29
   `0x20000`=P0.15 `0x400000`=P0.14 `0x800000`=P0.10(X/D switch) `0x10000`=P0.22.
-  **P0.00 (`0x100000`) reads stuck-low — ignore, not a button.**
-- Mux bits: `0x10`=ch0 `0x80`=ch1 `0x40`=ch2 `0x20`=ch3 `0x1000`=ch4 `0x2000`=ch5
-  `0x4000`=ch6 `0x8000`=ch7 (face buttons / d-pad / shoulders).
+  **P0.00 (`0x100000`) reads stuck-low and is not a button.** The firmware debounces it separately
+  and uses it to choose deep sleep or latch-off at power-down, so it's probably a charger/USB-detect line
+  (low–med confidence, see `FIRMWARE_FUNCTIONS.md`).
+- Button bits in `0x20000034` (from the code; matches `button_map.json`): `0x10` Up, `0x20` Right,
+  `0x40` Down, `0x80` Left, `0x1000` Y, `0x2000` B, `0x4000` A, `0x8000` X, `0x100`/`0x200` L2/R2,
+  `0x400`/`0x800` L1/R1, `0x10000` Home. The labels "ch4…ch7" used by the mapper tools are just
+  bit names. The real HC4051 channels are ch4 = A, ch5 = B, ch6 = X, ch7 = Y.
 - Sticks are 2 analog sticks on **AIN4..7 = P0.03..P0.06** (ADC side, per `FUN_00003f80`).
   Measured with `tools/stick_probe.py` (2026-11-01):
   - **v0 = left stick X** (left 0 / right 255), **v1 = left stick Y** (up 0 / down 255).
   - **v4/v5 also follow the left stick** (X/Y, ~1..255). They're slow to return: v4 stayed at 137 after a push.
   - **v2/v3 did not move**, and **the right stick and both triggers changed none of the six
-    values** in that test. Open question: possibly a mode/analog toggle, or a hardware issue.
-  - Reads can land **mid-update**: a word briefly reads `0x8000`, in array order, about every 10 s
-    (looks like periodic recalibration). The tools only accept two identical consecutive reads.
+    values** in that test. The code explains it (`FIRMWARE_FUNCTIONS.md` §3). In D mode a digital
+    sub-mode (default on, **Home toggles it**) maps the right stick onto face buttons and forces
+    v2/v3 = 128. The triggers are stored elsewhere (`0x200001ee/ef` + button bits `0x100/0x200`).
+    v4/v5 are an idle-timer snapshot, not live axes. Not yet re-tested with Home toggled.
+  - Reads can land **mid-update**: a word briefly reads `0x8000`. The stick scan writes 16-bit values
+    (centre `0x8000`) and the report builder shifts them `>>8` in place, so SWD sometimes catches the
+    gap. The tools only accept two identical consecutive reads.
   - Earlier versions of this doc / the tools described the area as "8 direction bytes, rest 0"
     (`mapper_gui.py`) or "4× u16, centre `0x8000`" (`live_report.py`, `map_buttons.py`). Both
     were wrong and are fixed. The `stk1/3/5/7` entries in `button_map.json` (high bytes) were most
