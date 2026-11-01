@@ -40,6 +40,66 @@ whose USB dongle was lost. Work done 2026-10-30 → 2026-11-01.
 
 ---
 
+## Quick start: use the Nano as the dongle
+
+What you need:
+- **ST-Link** wired to the controller's SWD pads (`SWD_DUMP.md`).
+- **Nano + nRF24L01+** wired as in `RF_SNIFFING.md` (CE D9, CSN D10, SPI D11–13, VCC 5 V on the
+  adapter board).
+- Python venv: `python3 -m venv venv && ./venv/bin/pip install pyocd pyserial`.
+- Only if you rebuild the sketch: `arduino-cli` + `arduino-cli lib install RF24`.
+
+**1. Build the controller image** (optional: a prebuilt one is in `prebuilt_hex/`):
+```
+python3 tools/make_locked_rom.py --selftest      # must print "selftest ok (14 bytes changed)"
+python3 tools/make_locked_rom.py ABCDEF          # -> prebuilt_hex/speedlink_locked_ABCDEF.bin
+```
+
+**2. Flash the controller** (100 kHz + chip erase; faster speeds timed out on hand-soldered wires):
+```
+./venv/bin/pyocd flash -t nrf51 -f 100k -e chip --base-address 0x0 prebuilt_hex/speedlink_locked_ABCDEF.bin
+```
+
+**3. Verify the patches:**
+```
+./venv/bin/pyocd cmd -t nrf51 -f 100k -c "read16 0x4860 8" -c "read16 0x48c2 2" -c "read32 0x3fc04 16"
+```
+Expected output:
+- `bf00 …` at `0x4860` and `0x4866`
+- `2420` at `0x48c2`
+- `00abcdef 00000001 aa010100 aa558877` at `0x3fc04`
+
+**4. Flash the Nano** (it's an ATmega168 clone: bootloader at 19200 baud):
+```
+AV=~/Library/Arduino15/packages/arduino/tools/avrdude/8.0.0-arduino1
+$AV/bin/avrdude -C $AV/etc/avrdude.conf -c arduino -p atmega168 -P $(/bin/ls /dev/cu.*usbserial* | head -1) \
+   -b 19200 -D -U flash:w:prebuilt_hex/nrf24_host.ino.hex:i
+```
+(To rebuild instead: `arduino-cli compile --fqbn arduino:avr:nano:cpu=atmega168 --output-dir BUILD arduino/nrf24_host`.)
+
+**5. Run it.** Start the serial log, then switch the controller on (hold **Home ~3 s**):
+```
+./venv/bin/python tools/readserial.py 40
+```
+Expected sequence: `controller ownID=16670F` → `STATE confirm` → `STATE streaming` → `tick … 84:~180`
+and `REP …` lines that change as you press buttons.
+- The Nano learns the controller's ID the first time and keeps it in EEPROM.
+- In D mode, press **Home** once while connected to get an analog right stick (LED3 on).
+
+**Troubleshooting:**
+
+| Symptom | Fix |
+|---|---|
+| Ticks stay `81:0 82:0 84:0` | Controller off or not latched on. Hold Home ~3 s, or power-cycle |
+| `known ownID=0` while the controller is already streaming | Power-cycle the controller so it pairs again from step 1 |
+| Used to work, now never pairs | Probably the **bond wipe** after a long Home press (`FIRMWARE_FUNCTIONS.md`). Redo step 2 |
+| pyocd "Target not detected" / timeout | Reseat the SWD wires, replug the ST-Link, keep `-f 100k` |
+| Never monitor with pyocd's default connect | It halts the CPU and the radio goes silent. The repo tools use `connect_mode="attach"` |
+
+Undo: flash the stock dump (see "Restore to stock" below). Protocol and patch details: `PAIRING_PROTOCOL.md`.
+
+---
+
 ## RF link (verified on day 3 from the live radio registers)
 
 | Item | Value |
