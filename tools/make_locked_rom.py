@@ -11,6 +11,10 @@ Build a stock-firmware image locked to ONE host ID (see PAIRING_PROTOCOL.md).
   - state 2 (confirm) and state 4 (stream) failures retry instead of resetting
     (FUN_00004514 0x45f0 / 0x4624 -> return @0x4610). Needed for a host parked on
     one channel: after the address switch the controller restarts its hop table.
+  - keeps the bond on Home power-off: the latch-off path (0x38bc, state 4 -> 6 on
+    battery) calls BondRecord_Save (0x3ab0) at 0x3908 with host ID 0 / bonded 0,
+    which locked the controller out of the Nano (seen on hardware: 0x3FC04 read 0).
+    That BL is NOPed. The normal save at 0x3a20 (real host ID) is untouched.
 
 Does NOT flash. Flash the output with (100 kHz + chip erase: 400 kHz timed out mid-erase):
   pyocd flash -t nrf51 -f 100k -e chip --base-address 0x0 <out.bin>
@@ -39,13 +43,15 @@ RETRY = {0x45f0: (b"\x71\xd0", b"\x0e\xd0"),   # beq 0x46d6 (tx failed)  -> beq 
          0x46a0: (b"\x10\x28", b"\xfe\x28"),   # cmp r0,#0x10 -> cmp r0,#0xfe
          # ponytail: fixed channel = no interference dodging; follow the LFSR if needed
          0x48c2: (b"\x04\x46", b"\x20\x24")}   # mov r4,r0 -> movs r4,#32 (channel)
+# bl 0x3ab0 (save host 0) on the Home latch-off path -> 2x nop; record stays as flashed
+KEEP_BOND = {0x3908: (b"\x00\xf0", NOP), 0x390a: (b"\xd2\xf8", NOP)}
 
 
 def build(rom: bytes, host_id: int, soft: bool = False) -> bytes:
     assert len(rom) == 0x40000, "expected full 256 KB dump"
     assert 0 < host_id <= 0xFFFFFF, "host ID must be non-zero 24-bit"
     img = bytearray(rom)
-    for off, (orig, new) in ({} if soft else STRICT).items() | RETRY.items():
+    for off, (orig, new) in ({} if soft else STRICT).items() | RETRY.items() | KEEP_BOND.items():
         cur = bytes(img[off:off + 2])
         if cur not in (orig, new):  # refuse to patch an unknown image
             raise SystemExit(f"unexpected bytes at {off:#x}: {cur.hex()}")
@@ -61,9 +67,10 @@ def selftest():
     assert out[0x4860:0x4862] == NOP and out[0x4866:0x4868] == NOP
     assert out[0x45f0:0x45f2] == b"\x0e\xd0" and out[0x4624:0x4626] == b"\xf4\xe7"
     assert out[0x46a0:0x46a2] == b"\xfe\x28" and out[0x48c2:0x48c4] == b"\x20\x24"
+    assert out[0x3908:0x390c] == NOP * 2 and out[0x3a20:0x3a24] == rom[0x3a20:0x3a24]
     assert struct.unpack_from("<4I", out, BOND + 4) == (0xABCDEF, 1, 0xAA010100, MAGIC)
     diff = [i for i in range(len(rom)) if rom[i] != out[i]]
-    patched = {o + k for o in (*STRICT, *RETRY) for k in (0, 1)}
+    patched = {o + k for o in (*STRICT, *RETRY, *KEEP_BOND) for k in (0, 1)}
     assert all(i in patched or BOND <= i < BOND + 0x14 for i in diff), diff
     assert build(out, 0xABCDEF) == out  # idempotent on an already-patched image
     soft = build(rom, 0x123456, soft=True)

@@ -78,23 +78,26 @@ No crypto peripherals are used.
 | X/D switch | `0x2000010d` = 1 for **D** (P0.10 high). The direct-button bit `0x800000` in `0x2000002c` is active-low, so it reads 0 in D mode. Our controller is in D mode, which matches the `REP 18 01 LX LY RX RY …` layout |
 | README mux legend | Only the bit values / button names are right (A `0x4000`, B `0x2000`, X `0x8000`, Y `0x1000`, which match `button_map.json`). The "ch4–ch7" labels don't match the real HC4051 channels (ch4 A, ch5 B, ch6 X, ch7 Y). `0x20000034` is the **combined** debounced button word (direct + mux + triggers), not mux-only |
 
-## ⚠️ Bond-wipe risk for the locked image
+## Bond wipe on Home power-off (fixed in the locked image)
 
 The bond record (`0x3FC00`) is **rewritten by the firmware itself** (`0x3ab0` = erase page, write 3 words + magic):
 - **State 5 = deep sleep (`0x3984`):** saves the RAM host ID. With our strict lock that's always `ABCDEF`, so this is harmless.
 - **State 6 = latch-off (`0x38bc`):** saves **host ID 0, bonded 0** (verified in the disassembly:
   `[sp+0]=0`, `[sp+4]=0`, then `bl 0x3ab0`). With the strict lock (`0x4860`/`0x4866` NOPs), the next boot
   compares every reply against host 0, so **the controller would never pair with the Nano again** until
-  it is reflashed.
+  it is reflashed. **Confirmed on hardware:** after a Home power-off the record read
+  `ffffffff 00000000 00000000 aa000100 aa558877`.
 - **How it's reached** (jump table `0x4a7e` decoded by hand, medium confidence; see `FIRMWARE_FLOW.md` §3):
   **on battery, holding Home ~3.3 s to switch off goes state 4 → 6 directly.** That is the normal
   power-off gesture. Idle / pairing timeouts go to state 5 (deep sleep), which keeps the host ID.
   Stock firmware doesn't care, because it re-learns any host after a wipe. That's why the stock dump has host 0.
-- **Proposed fixes (not applied, untested):**
-  - In `tools/make_locked_rom.py`, NOP the `bl 0x3ab0` at `0x3908` (4 bytes → `00 bf 00 bf`). State 6
-    then leaves flash untouched and the `ABCDEF` record stays.
-  - Or build with `--soft` (no strict lock): after a wipe the controller re-learns `ABCDEF` from the Nano.
-  **Recovery if it happens:** reflash `speedlink_locked_ABCDEF.bin`.
+- **Callers of `0x3ab0`** (raw scan for `bl 0x3ab0`, since Ghidra shows no xrefs to an undefined
+  function): only `0x3908` (latch-off, zeros) and `0x3a20` (deep sleep, real host ID + bonded bit).
+- **Fix (applied, verified on hardware):** `tools/make_locked_rom.py` (`KEEP_BOND`) NOPs the
+  `bl 0x3ab0` at `0x3908` (`00 bf 00 bf`). State 6 leaves flash untouched and the `ABCDEF` record
+  stays; power off with Home → power on → reconnects to the Nano.
+  The alternative, `--soft` (no strict lock), would let the controller re-learn `ABCDEF` after a wipe.
+  **Recovery for an image built before the fix:** reflash `speedlink_locked_ABCDEF.bin`.
 
 ## Not yet defined in Ghidra (worth `create_function` in a later pass)
 `0x1474`–`0x19ba` (Gazell TX-attempt / ack-timeout), `0x1a08`, `0x1faa`, `0x26a2` (TIMER2 IRQ),

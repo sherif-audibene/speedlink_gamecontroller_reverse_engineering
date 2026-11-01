@@ -10,7 +10,7 @@ whose USB dongle was lost. Work done 2026-10-30 → 2026-11-01.
 - `FIRMWARE_FLOW.md` — **flowcharts** of the ROM logic: boot/main loop, layers, power states,
   pairing, input pipeline (PNG images; Mermaid sources in `docs/flowcharts/`).
 - `FIRMWARE_FUNCTIONS.md` — **all 255 firmware functions** with suggested names, evidence and
-  confidence. Also covers boot/main loop, subsystems, the hidden RF test mode and a bond-wipe risk for the locked image.
+  confidence. Also covers boot/main loop, subsystems, the hidden RF test mode and the (fixed) bond wipe on Home power-off.
 - `SWD_DUMP.md` — SWD solder points + non-destructive flash-dump procedure.
 - `RF_SNIFFING.md` — the first RF phase: wiring, flashing, sketches, captures (with notes
   on what it got wrong).
@@ -32,8 +32,8 @@ whose USB dongle was lost. Work done 2026-10-30 → 2026-11-01.
 4. **BLE stack brought up** on the controller (pairs with a PC/Mac as a HID gamepad) —
    one motor-buzz blocker remains (see `ble_gamepad/`).
 5. **Dongle replaced by the Nano (day 3).** We decoded Speedlink's app-level pairing
-   protocol, patched 14 bytes of the stock firmware to lock it to our host ID `ABCDEF`
-   and pin channel 32, and wrote `arduino/nrf24_host`. The controller now streams input
+   protocol, patched 17 bytes of the stock firmware to lock it to our host ID `ABCDEF`,
+   pin channel 32 and keep the bond on Home power-off, and wrote `arduino/nrf24_host`. The controller now streams input
    reports wirelessly to the Nano at **~180 reports/s**. Details in `PAIRING_PROTOCOL.md`.
 
 **Current state of the controller:** running the **locked** image
@@ -53,7 +53,7 @@ What you need:
 
 **1. Build the controller image** (optional: a prebuilt one is in `prebuilt_hex/`):
 ```
-python3 tools/make_locked_rom.py --selftest      # must print "selftest ok (14 bytes changed)"
+python3 tools/make_locked_rom.py --selftest      # must print "selftest ok (17 bytes changed)"
 python3 tools/make_locked_rom.py ABCDEF          # -> prebuilt_hex/speedlink_locked_ABCDEF.bin
 ```
 
@@ -94,7 +94,7 @@ and `REP …` lines that change as you press buttons.
 |---|---|
 | Ticks stay `81:0 82:0 84:0` | Controller off or not latched on. Hold Home ~3 s, or power-cycle |
 | `known ownID=0` while the controller is already streaming | Power-cycle the controller so it pairs again from step 1 |
-| Used to work, now never pairs | **Bond wipe**: switching off by holding Home (on battery) saves host ID 0 (`FIRMWARE_FLOW.md` §3). Redo step 2. Until it's fixed, let the controller idle off instead |
+| Used to work, now never pairs | **Bond wipe**: with an image built before the `0x3908` fix, switching off by holding Home saves host ID 0 (`FIRMWARE_FLOW.md` §3). Check with `read32 0x3fc00 20` (`+4` should be `00abcdef`) and redo step 2 with the current image |
 | pyocd "Target not detected" / timeout | Reseat the SWD wires, replug the ST-Link, keep `-f 100k` |
 | Never monitor with pyocd's default connect | It halts the CPU and the radio goes silent. The repo tools use `connect_mode="attach"` |
 

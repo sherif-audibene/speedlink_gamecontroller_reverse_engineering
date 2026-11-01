@@ -37,9 +37,9 @@ Inputs each tick:
 > ⚠️ **Locked-image consequence.** On battery, **holding Home to switch off (state 4 → 6)** saves
 > **host ID 0**. Stock firmware is fine with that: it re-learns any host on the next pairing (the stock
 > dump has host 0 for exactly this reason). The strict lock (`0x4860`/`0x4866` NOPs) is not: after
-> such a power-off the controller rejects the Nano until it is reflashed. Fixes, both untested:
-> - NOP `bl BondRecord_Save` at `0x3908` (`00 bf 00 bf`).
-> - Build with `--soft`. The controller then re-learns `ABCDEF` from the Nano.
+> such a power-off the controller rejected the Nano until it was reflashed (confirmed on hardware).
+> **Fixed:** the locked image NOPs `bl BondRecord_Save` at `0x3908` (`00 bf 00 bf`), verified:
+> Home power-off → power on reconnects. The diagram above shows the stock logic.
 
 ## 4. Pairing / streaming (`Pairing_Step` 0x4514, one packet per call)
 

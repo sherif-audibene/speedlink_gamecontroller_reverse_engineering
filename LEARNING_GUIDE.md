@@ -63,8 +63,8 @@ That loop can be learned.
 
 ## 6. Exercises based on this repo
 - Rewrite `arduino/nrf24_host` from scratch using only `PAIRING_PROTOCOL.md`.
-- Find and test the bond-wipe fix (`bl 0x3ab0` at `0x3908`, see `FIRMWARE_FUNCTIONS.md`) and add it
-  to `tools/make_locked_rom.py` with a self-test.
+- Re-find the bond-wipe fix yourself (done in `KEEP_BOND`, `tools/make_locked_rom.py`): from the
+  flash page `0x3FC00`, find the save routine and all its callers without Ghidra's xrefs.
 - Drive the rumble motors from the Nano via the step-4 ack bytes 3 and 4.
 - Follow the stock LFSR channel hopping from the host, so the fixed-channel patch can be dropped.
 - Confirm or refute the `_maybe` function names in the Ghidra project.

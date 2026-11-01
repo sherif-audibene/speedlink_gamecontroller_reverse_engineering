@@ -95,7 +95,7 @@ channel instead (section 5).
 
 ## 5. What we changed
 
-### Controller: `tools/make_locked_rom.py ABCDEF` (14 bytes vs stock)
+### Controller: `tools/make_locked_rom.py ABCDEF` (17 bytes vs stock)
 | Offset | Stock → patched | Why |
 |---|---|---|
 | `0x3FC04..` | bond record (host `ABCDEF`, bonded, magic) | the controller targets our host |
@@ -103,6 +103,7 @@ channel instead (section 5).
 | `0x45f0`, `0x4624` | `beq`/`b 0x46d6` → `0x4610` (return) | step 2 retries instead of resetting |
 | `0x46a0` | `cmp r0,#0x10` → `#0xFE` | streaming tolerates ~3 s of misses and still self-recovers |
 | `0x48c2` | `mov r4,r0` → `movs r4,#32` | no hopping: always channel 32 |
+| `0x3908` | `bl 0x3ab0` → 2× NOP | Home power-off no longer overwrites the bond with host 0 (step 9) |
 
 Flash (`-f 100k -e chip`; 400 kHz / sector erase timed out mid-erase on our wiring):
 ```
@@ -169,6 +170,14 @@ Restore stock: same command with `firmware_dump/0x00000000_0x00040000_ROM.bin`.
    fix is both: EEPROM own ID + threshold 254 rounds (~3 s) instead of never.
 8. **Only ~4 reports/s.** The app layer hops every packet (section 4). Pinning channel 32
    (`0x48c2`) → **~180 reports/s**, stable.
+9. **Bond wipe on Home power-off.** Documenting the firmware turned up a risk: the latch-off
+   state (`0x38bc`) saves the bond record with host ID 0. Confirmed on hardware: after
+   switching off with Home, `read32 0x3fc00 20` showed `ffffffff 00000000 00000000 aa000100
+   aa558877` (host 0, bonded 0, magic intact), and the strict lock then rejects the Nano.
+   Only 2 callers of the save routine exist (a scan for `bl 0x3ab0`): `0x3a20` (normal sleep,
+   saves the real host ID) and `0x3908` (latch-off, saves zeros). NOPing `0x3908` fixed it:
+   power off with Home → power on → reconnects to the Nano.
+   *Lesson: an "undefined" function in Ghidra has no xrefs; scan the raw binary for BL targets.*
 
 ## 7. Open questions
 - **The old `01 02 76` / `E9 74 03 80…` / `5A` traffic at 2 Mbps** (`RF_SNIFFING.md`) is not
@@ -179,11 +188,8 @@ Restore stock: same command with `firmware_dump/0x00000000_0x00040000_ROM.bin`.
 - ~~`0x698c` / `0x69c0` raw TX/RX~~ **Resolved:** the hidden RF test mode (Start+Home+Back at
   power-on) uses Nordic `radio_test` modulated / constant-carrier TX. ~~Two startup paths~~
   **Resolved:** `0x4700` is the only normal setup; `0x4f50` is test mode 3.
-- **⚠️ Bond-wipe risk:** the "latch-off" power-down state (`0x38bc`) rewrites the bond record with
-  **host ID 0**. On battery it is reached by **holding Home ~3.3 s to switch off**, the normal off
-  gesture (`FIRMWARE_FLOW.md` §3, medium confidence). With the strict lock the controller would then
-  never pair with the Nano until it's reflashed. Proposed 4-byte fix: NOP `bl 0x3ab0` at `0x3908`
-  (not applied yet). Details: `FIRMWARE_FUNCTIONS.md`.
+- ~~Bond-wipe risk~~ **Fixed and verified on hardware** (section 6 step 9): Home power-off used to
+  save host ID 0; `bl 0x3ab0` at `0x3908` is now NOPed. Details: `FIRMWARE_FUNCTIONS.md`.
 - Pipe 0 on the host: untested since the halt bug (section 6.4).
 - Following the LFSR hop sequence (instead of pinning ch32) for interference robustness.
 - Full input-report map; then a PC side (serial → virtual gamepad), since the ATmega168
