@@ -84,7 +84,9 @@ Reimplemented/ported for the custom firmware and verified live over SWD.
 
 ### Decoded RAM state (what `tools/` polls)
 - Direct buttons bitmask: `0x2000002c`. Mux buttons bitmask: `0x20000034` (low 16 bits).
-- Stick directions: 8 bytes `0x2000003c..0x20000043`, rest 0, full deflection 255.
+- Stick axes: 6 × u16 LE at `0x2000003c..0x47`, value 0..255 in the low byte, rest 128
+  (v0/v1 = left stick X/Y; details and open questions in `README.md`). Earlier notes said
+  "8 bytes, rest 0, full deflection 255". That was wrong.
 - (Bit → pin/channel legend is in `README.md`.)
 
 ## Ghidra setup (to reproduce)

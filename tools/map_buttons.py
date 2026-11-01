@@ -34,8 +34,8 @@ DIRECT = {0x8:"P0.21", 0x1:"P0.23", 0x10000:"P0.22", 0x4:"P0.28", 0x2:"P0.29",
 # mux bitmask @0x20000034 : bit -> HC4051 channel
 MUX = {0x10:"ch0", 0x80:"ch1", 0x40:"ch2", 0x20:"ch3",
        0x1000:"ch4", 0x2000:"ch5", 0x4000:"ch6", 0x8000:"ch7"}
-CENTER = 0x8000
-STICK_THRESH = 0x3000   # how far a stick must move to count as "pushed"
+CENTER = 0x80          # axes: u16 LE at 0x3c.., value 0..255 in low byte, rest 128 (was 0x8000: wrong)
+STICK_THRESH = 0x30     # how far a stick must move to count as "pushed"
 
 def connect():
     s = ConnectHelper.session_with_chosen_probe(target_override="nrf51", frequency=FREQ)
@@ -58,8 +58,11 @@ class Link:
             try:
                 d = self.t.read32(0x2000002c)
                 m = self.t.read32(0x20000034) & 0xFFFF
-                ax = struct.unpack("<4H", bytes(self.t.read_memory_block8(0x2000003c, 8)))
-                return d, m, [a - CENTER for a in ax]
+                # skip mid-update reads (a word briefly reads 0x8000): retry until stable
+                a = bytes(self.t.read_memory_block8(0x2000003c, 12))
+                if a != bytes(self.t.read_memory_block8(0x2000003c, 12)):
+                    continue
+                return d, m, [v - CENTER for v in a[0::2]]
             except TransferError:
                 self._recover()
 

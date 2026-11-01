@@ -12,11 +12,16 @@ Workflow:
   3. Type a name, press Enter (or click Assign). Autosaves to button_map.json.
 
 Sticks auto-calibrate: the resting value becomes the center, and a tile lights
-when an axis deviates past the deadband. If the sticks weren't centered at
-startup, center them and click "Recenter sticks".
+when an axis deviates past the deadband (ax<i>+ / ax<i>-). If the sticks weren't
+centered at startup, center them and click "Recenter sticks".
 
 RAM map (stock firmware):
-  0x2000002c direct-GPIO buttons | 0x20000034 mux buttons | 0x2000003c 4x stick axes
+  0x2000002c direct-GPIO buttons | 0x20000034 mux buttons
+  0x2000003c 6 x u16 LE axes, value 0..255 in the low byte, rest 128 (verified 2026-11-01
+  with tools/stick_probe.py). Reads can land mid-update (a word briefly reads 0x8000),
+  so a snapshot is only used when two consecutive reads agree.
+  (An earlier version read 8 "direction bytes, rest 0"; that was wrong - the odd bytes
+  are high bytes that only change during those mid-update reads.)
 
 Prereq: stock firmware flashed. Run in your own shell (USB access):
   <scratchpad>/venv/bin/python tools/mapper_gui.py
@@ -34,13 +39,13 @@ DIRECT = {0x8:"P0.21", 0x1:"P0.23", 0x10000:"P0.22", 0x4:"P0.28", 0x2:"P0.29",
           0x400000:"P0.14", 0x800000:"P0.10", 0x20000:"P0.15"}  # P0.00 stuck-low: excluded
 MUX = {0x10:"ch0", 0x80:"ch1", 0x40:"ch2", 0x20:"ch3",
        0x1000:"ch4", 0x2000:"ch5", 0x4000:"ch6", 0x8000:"ch7"}
-STICK_DEAD = 40          # byte value above resting (~0) before a stick direction counts as pushed
-CAL_SAMPLES = 25         # samples averaged to find each direction byte's resting value
-NSTK = 8                 # 8 stick-direction bytes at 0x3c..0x43 (2 sticks x 4 directions, rest=0, push->255)
+STICK_DEAD = 40          # deviation from resting value (0..255 scale) before an axis counts as pushed
+CAL_SAMPLES = 25         # samples averaged to find each axis' resting value
+NSTK = 6                 # 6 axes: u16 LE at 0x3c..0x47, low byte = 0..255, rest 128
 
 SIG_DIRECT = [f"direct:{p}" for p in DIRECT.values()]
 SIG_MUX    = [f"mux:{c}" for c in MUX.values()]
-SIG_AXIS   = [f"stk{i}" for i in range(NSTK)]   # 0x3c+i
+SIG_AXIS   = [f"ax{i}{d}" for i in range(NSTK) for d in "+-"]   # word at 0x3c+2i
 
 
 def btn_signals(d, m):
@@ -78,9 +83,11 @@ class Reader(threading.Thread):
             try:
                 d = t.read32(0x2000002c)
                 m = t.read32(0x20000034) & 0xFFFF
-                # 8 stick-direction bytes at 0x3c..0x43 (rest=0, full push=255)
-                ax = list(t.read_memory_block8(0x2000003c, NSTK))
-                self.q.put(("state", (btn_signals(d, m), ax)))
+                # 6 axes = low bytes of the u16 words at 0x3c..0x47; skip mid-update reads
+                a1 = bytes(t.read_memory_block8(0x2000003c, 2 * NSTK))
+                a2 = bytes(t.read_memory_block8(0x2000003c, 2 * NSTK))
+                if a1 == a2:
+                    self.q.put(("state", (btn_signals(d, m), list(a1[0::2]))))
             except TransferError:
                 self.q.put(("status", "link dropped - reconnecting"))
                 try: s.close()
@@ -162,13 +169,15 @@ class App:
         self.axinfo.config(text="sticks: recalibrating... (keep sticks centered)")
 
     def axis_signals(self, ax):
-        """Return set of active stick-direction signals (rest ~0, push raises the byte)."""
+        """Return set of active axis signals: ax<i>+ above / ax<i>- below the resting value."""
         if self.baseline is None:
             return set()
         out = set()
         for i, v in enumerate(ax):
             if v - self.baseline[i] > STICK_DEAD:
-                out.add(f"stk{i}")
+                out.add(f"ax{i}+")
+            elif self.baseline[i] - v > STICK_DEAD:
+                out.add(f"ax{i}-")
         return out
 
     # ---------- mapping persistence ----------
@@ -253,7 +262,7 @@ class App:
                         self.axinfo.config(text="sticks: calibrating... keep sticks centered")
                     else:
                         self.axinfo.config(
-                            text="stk0..7 raw: " + " ".join(f"{v:3d}" for v in ax))
+                            text="ax0..5 raw: " + " ".join(f"{v:3d}" for v in ax))
         except queue.Empty:
             pass
         self.root.after(40, self.pump)

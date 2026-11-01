@@ -7,7 +7,9 @@ straight out of RAM. The stock firmware handles the HC4051 mux + sticks for us.
 
   RAM 0x2000002c = direct-GPIO buttons  (Start/Back/etc, see DIRECT below)
   RAM 0x20000034 = mux buttons          (face buttons/shoulders/d-pad)
-  RAM 0x2000003c = 4x uint16 stick axes (center 0x8000, see FUN_00003f80)
+  RAM 0x2000003c = 6x u16 LE axes, 0..255 in the low byte, rest 128
+                   (v0/v1 = left stick X/Y; see README "stick axes" - verified with
+                   tools/stick_probe.py. Earlier this said center 0x8000: wrong.)
 
 Prerequisite: stock firmware flashed:
   pyocd flash -t nrf51 -f 400k --base-address 0x0 \
@@ -38,12 +40,15 @@ def connect():
     t.reset_and_halt(); t.resume(); time.sleep(0.4)
     return s, t
 
-CENTER = 0x8000
-DEAD = 0x1800   # stick deadband around center before we report deflection
+CENTER = 0x80
+DEAD = 0x18     # stick deadband around center (0..255 scale) before we report deflection
 
 def sticks(t):
-    raw = struct.unpack("<4H", bytes(t.read_memory_block8(0x2000003c, 8)))
-    return [a - CENTER for a in raw]  # signed offset from center
+    # read twice: a word can be caught mid-update (briefly 0x8000) -> retry until stable
+    while True:
+        a = bytes(t.read_memory_block8(0x2000003c, 12))
+        if a == bytes(t.read_memory_block8(0x2000003c, 12)):
+            return [v - CENTER for v in a[0::2]]  # low bytes, signed offset from center
 
 def main():
     s, t = connect()

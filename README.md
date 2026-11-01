@@ -100,20 +100,31 @@ image, since the patches don't touch input decoding:
 |---|---|
 | Direct-GPIO buttons | word `0x2000002c`, bit set = pressed |
 | Mux buttons (HC4051) | word `0x20000034` (low 16 bits), bit set = pressed |
-| Stick directions | 8 bytes `0x2000003c..0x20000043`, **rest 0, full push 255** |
+| Stick axes | 6 × u16 LE at `0x2000003c..0x47`; value **0..255 in the low byte, rest 128** |
 
 - Direct bits: `0x8`=P0.21(Start) `0x1`=P0.23(Back) `0x4`=P0.28 `0x2`=P0.29
   `0x20000`=P0.15 `0x400000`=P0.14 `0x800000`=P0.10(X/D switch) `0x10000`=P0.22.
   **P0.00 (`0x100000`) reads stuck-low — ignore, not a button.**
 - Mux bits: `0x10`=ch0 `0x80`=ch1 `0x40`=ch2 `0x20`=ch3 `0x1000`=ch4 `0x2000`=ch5
   `0x4000`=ch6 `0x8000`=ch7 (face buttons / d-pad / shoulders).
-- Sticks are 2 analog sticks on **AIN4..7 = P0.03..P0.06** (8 direction bytes).
+- Sticks are 2 analog sticks on **AIN4..7 = P0.03..P0.06** (ADC side, per `FUN_00003f80`).
+  Measured with `tools/stick_probe.py` (2026-11-01):
+  - **v0 = left stick X** (left 0 / right 255), **v1 = left stick Y** (up 0 / down 255).
+  - **v4/v5 also follow the left stick** (X/Y, ~1..255). They're slow to return: v4 stayed at 137 after a push.
+  - **v2/v3 did not move**, and **the right stick and both triggers changed none of the six
+    values** in that test. Open question: possibly a mode/analog toggle, or a hardware issue.
+  - Reads can land **mid-update**: a word briefly reads `0x8000`, in array order, about every 10 s
+    (looks like periodic recalibration). The tools only accept two identical consecutive reads.
+  - Earlier versions of this doc / the tools described the area as "8 direction bytes, rest 0"
+    (`mapper_gui.py`) or "4× u16, centre `0x8000`" (`live_report.py`, `map_buttons.py`). Both
+    were wrong and are fixed. The `stk1/3/5/7` entries in `button_map.json` (high bytes) were most
+    likely triggered by those mid-update reads, so re-map the sticks with the fixed GUI (`ax<i>±`).
 - The mux is driven by selects **P0.09 / P0.10 / P0.11**, output on **AIN0 = P0.26**.
   Note P0.10 is time-shared as both select-S1 and the X/D switch (why our static custom
   firmware couldn't switch the mux but the stock firmware can).
 
-(SWD memory reads are exact — verified the stick rest jitter is 0; any noise would be
-real analog, not our reads.)
+(SWD memory reads are exact. Once mid-update reads are filtered, the sticks read rock-steady at
+rest: 300 samples over 4 s gave offset 0 on all six axes.)
 
 ---
 
@@ -139,6 +150,7 @@ real analog, not our reads.)
   - `live_report.py` — live button/stick readout over SWD.
   - `map_buttons.py` — CLI interactive mapper.
   - `diag_sticks.py`, `diag_rest.py` — stick-location / rest-jitter diagnostics.
+  - `stick_probe.py` — guided per-direction stick/trigger probe (which axis moves how).
   - RF-phase scripts: `decode_ch32.py` (recovered the 2 Mbps `01 02 76` address, which
     turned out not to be the pairing link), `broad_decode.py`, `aggscan.py`, `sweep.py`,
     `sustain.py`, `readserial.py`.

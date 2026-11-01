@@ -125,7 +125,8 @@ Restore stock: same command with `firmware_dump/0x00000000_0x00040000_ROM.bin`.
 `18 | 01 LX LY RX RY B1 B2 00 …`
 - `18`: the flags byte the firmware builds (`x<<4 | (y&3)<<2 | struct[8]`), not input.
 - `01`: constant (report ID?).
-- 4 stick axes, `0x80` = centre (one went to `FF` at full deflection).
+- 4 stick axes, `0x80` = centre (one went to `FF` at full deflection). This matches the
+  SWD RAM axes (low bytes at `0x2000003c..`, rest 128).
 - `B1`: low nibble `F` at rest (d-pad hat?); high bits `10/20/40/80` = buttons.
 - `B2`: `10`, `20` seen = more buttons.
 - The full button/axis map is still to do.
@@ -172,6 +173,8 @@ Restore stock: same command with `firmware_dump/0x00000000_0x00040000_ROM.bin`.
 - Following the LFSR hop sequence (instead of pinning ch32) for interference robustness.
 - Full input-report map; then a PC side (serial → virtual gamepad), since the ATmega168
   Nano can't be a USB HID device.
+- **Right stick and triggers** changed none of the six RAM axis values in the
+  2026-11-01 `stick_probe.py` test (README "Input architecture"). Check before mapping the report.
 
 ## 8. Tools added in this phase
 | Tool | Purpose |
