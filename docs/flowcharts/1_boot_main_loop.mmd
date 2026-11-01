@@ -1,0 +1,24 @@
+flowchart TD
+    R["Reset_Handler 0x154"] --> SI["SystemInit 0x4edc<br/>(errata, clocks)"]
+    SI --> SL["__scatterload 0x2e38<br/>(RW init, RLE decompress)"]
+    SL --> M["main 0x5a50"]
+    M --> I1["GPIO_InitPins 0x4074<br/>LEDs P0.17-20 off, P0.16 latch, pull-ups"]
+    I1 --> I2["Clock_HfxoStart · TickTimer_Start (TIMER0 10.24 ms)<br/>Rumble_PwmInit (TIMER1 PWM P0.24/25)"]
+    I2 --> I3["GetOwnId 0x4158<br/>own ID = DEVICEID0 ^ DEVICEID1"]
+    I3 --> I4["Gzll_AppInit 0x4700<br/>250 kbps, pairing addr C1C2C6, ch table 8..64"]
+    I4 --> I5["Pairing_Reset · Input_Init · BondRecord_Apply 0x41c4<br/>(host ID, bonded, power state, X/D from flash)"]
+    I5 --> I6["Wdt_Init 200 ms · TestMode_CheckAtBoot"]
+    I6 --> TM{"Start+Home+Back<br/>held at boot?"}
+    TM -- yes --> T["TestMode_Run 0x4cd0 loop<br/>(Nordic radio_test: carrier / modulated / Gazell)"]
+    TM -- no --> W{"10.24 ms<br/>tick flag?"}
+    W -- no --> W
+    W -- yes --> L1["Power-on latch:<br/>hold Home 300 ticks (~3 s) → P0.16 high"]
+    L1 --> L2{"app state<br/>2 or 4?"}
+    L2 -- yes --> PS["Pairing_Step 0x4514<br/>(one radio packet, §4)"]
+    L2 -- no --> IN
+    PS --> IN["Input_ScanAll 0x4bb0<br/>(§5 → 19-byte report)"]
+    IN --> MS["Mode_UpdateSwitchAndHome 0x2f28<br/>X/D switch, Home = analog toggle"]
+    MS --> RU["Rumble_Update 0x4b78<br/>duty from host ack bytes 3/4"]
+    RU --> SM["App_StateMachine 0x4a54<br/>(§3, also runs Led_Task)"]
+    SM --> WD["Wdt_Feed 0x50c4"]
+    WD --> W

@@ -8,7 +8,7 @@ whose USB dongle was lost. Work done 2026-10-30 → 2026-11-01.
   hopping, firmware patches, the Nano host, and the debugging journey (day 3).
 - `FIRMWARE_ANALYSIS.md` — firmware RE details (memory map, functions, no-crypto proof).
 - `FIRMWARE_FLOW.md` — **flowcharts** of the ROM logic: boot/main loop, layers, power states,
-  pairing, input pipeline (Mermaid, renders on GitHub).
+  pairing, input pipeline (PNG images; Mermaid sources in `docs/flowcharts/`).
 - `FIRMWARE_FUNCTIONS.md` — **all 255 firmware functions** with suggested names, evidence and
   confidence. Also covers boot/main loop, subsystems, the hidden RF test mode and a bond-wipe risk for the locked image.
 - `SWD_DUMP.md` — SWD solder points + non-destructive flash-dump procedure.

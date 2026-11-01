@@ -1,0 +1,16 @@
+flowchart LR
+    D["DirectButtonScan 0x3e7c<br/>GPIO: Start, Back, Home, L3, R3,<br/>Turbo, X/D switch, P0.00<br/>3-sample debounce"] --> BTN[("buttons word<br/>0x20000034")]
+    MX["MuxScan 0x3c0c<br/>HC4051 via ADC AIN0:<br/>d-pad, A/B/X/Y, L1/R1, L2/R2<br/>+ 0..255 pressure bytes"] --> BTN
+    SK["StickScan 0x3f80<br/>AIN4..7, 4× averaged,<br/>auto-calibrated"] --> AX[("axes<br/>0x2000003c")]
+    BTN --> TB["Turbo_Apply 0x360c"]
+    TB --> B["BuildInputReport 0x2ffc"]
+    AX --> B
+    B --> XD{"X/D switch<br/>0x2000010d"}
+    XD -- X --> XR["XInput-style:<br/>00 14 · buttons · LT RT · int16 sticks"]
+    XD -- D --> DM{"digital sub-mode?<br/>0x2000010f (Home toggles)"}
+    DM -- "on (default)" --> RM["Input_RemapDpadRightStick 0x49d8<br/>right stick → face buttons, RX/RY = 0x80"]
+    DM -- off --> DR
+    RM --> DR["DirectInput-style:<br/>01 · LX LY RX RY · hat+face · buttons · Home · L2 R2"]
+    XR --> REP[("19-byte report<br/>0x200001a0")]
+    DR --> REP
+    REP --> PS["Pairing_Step state 4<br/>→ 84 packet to host"]

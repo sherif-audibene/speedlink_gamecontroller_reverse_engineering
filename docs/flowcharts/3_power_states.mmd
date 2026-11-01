@@ -1,0 +1,31 @@
+stateDiagram-v2
+    [*] --> S0: reset / wake
+    S0: 0 · boot / wake decision
+    S1: 1 · idle on EXT (radio off)
+    S2: 2 · active on EXT (radio on)
+    S3: 3 · shutting down (bond flag cleared)
+    S4: 4 · active on battery (radio on)
+    S5: 5 · deep sleep (EnterSystemOff 0x3984)
+    S6: 6 · latch-off (PowerOff_Prepare 0x38bc)
+
+    S0 --> S4: fresh Home / Back / Start press,<br/>or resume flag (power state 2)
+    S0 --> S1: EXT = 1
+    S0 --> S5: ~1 s, nothing pressed, P0.00 bit set
+    S0 --> S6: ~1 s, nothing pressed, P0.00 bit clear
+
+    S1 --> S3: LONG or EXT = 0
+    S1 --> S2: otherwise
+
+    S2 --> S3: LONG
+    S2 --> S4: EXT = 0
+    S2 --> S1: TIMEOUT
+
+    S3 --> S5: EXT = 0 and Home released
+    S3 --> S2: EXT ≠ 0 and fresh Home press
+
+    S4 --> S2: EXT = 1
+    S4 --> S6: LONG (EXT = 0)
+    S4 --> S5: TIMEOUT
+
+    S5 --> [*]: SYSTEMOFF · bond saved WITH host ID<br/>wake on Back/Start/Home/P0.00 = reset
+    S6 --> [*]: P0.16 low (power cut) · bond saved with HOST ID 0<br/>if still powered: Home → WDT reset

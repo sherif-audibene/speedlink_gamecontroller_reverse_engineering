@@ -1,0 +1,31 @@
+flowchart LR
+    subgraph APP["Speedlink application 0x2e24–0x5a50"]
+        main --> App_StateMachine
+        main --> Input_ScanAll
+        main --> Pairing_Step
+        Input_ScanAll --> BuildInputReport
+        Pairing_Step --> Gzll_SendPacket
+        Pairing_Step --> Gzll_SwitchToId
+        Pairing_Step --> Gzll_SetChannel
+        App_StateMachine --> Led_Task
+        App_StateMachine --> EnterSystemOff["EnterSystemOff 0x3984"]
+        App_StateMachine --> PowerOff_Prepare["PowerOff_Prepare 0x38bc"]
+        EnterSystemOff --> BondRecord_Save["BondRecord_Save 0x3ab0 (NVMC)"]
+        PowerOff_Prepare --> BondRecord_Save
+    end
+    subgraph GZLL["Nordic Gazell 0x018c–0x2d5c"]
+        Gzll_SendPacket --> gzll_add_packet_to_tx_fifo
+        gzll_add_packet_to_tx_fifo --> gzll_start_timeslot_engine
+        RADIO_IRQHandler --> GazellTxSuccessCallback
+        GazellTxSuccessCallback --> gzll_queue_callback_event
+        gzll_queue_callback_event -. "pend SWI0" .-> SWI0_GazellCallbackDispatch
+    end
+    subgraph HAL["Nordic SDK drivers 0x5b38–0x69f4"]
+        nrf_drv_timer_init
+        app_pwm_init
+        nrf_drv_wdt_init
+        ADC["nrf_adc_* / ADC_ReadChannel"]
+    end
+    SWI0_GazellCallbackDispatch -. "tx result + ack payload" .-> Pairing_Step
+    Input_ScanAll --> ADC
+    Gzll_SetChannel --> nrf_gzll_set_channel_table

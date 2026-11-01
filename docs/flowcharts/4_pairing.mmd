@@ -1,0 +1,20 @@
+flowchart TD
+    E["Pairing_Step"] --> H["Hop_NextChannel 0x4be4<br/>24-bit LFSR → ch 2..80<br/>(patched: always ch 32)"]
+    H --> ST{"pairing state<br/>0x20000005"}
+
+    ST -- 1 --> P1["Gzll_SetChannel(table 8,16..64)<br/>send A1 · ownID · LFSR on PAIRING addr C1C2C6"]
+    P1 --> A1{"ack type 01?<br/>Pair_CheckAckStep1 0x483c"}
+    A1 -- "host ID ok<br/>(stock: learn any if not bonded)" --> G2["Gzll_SwitchToId(hostID)<br/>state = 2"]
+    A1 -- no / no ack --> R1["return (retry next tick)"]
+
+    ST -- 2 --> P2["send 82 · ownID · hostID on HOST addr"]
+    P2 --> A2{"ack type 02 with hostID or ownID?<br/>Pair_CheckAckStep2 0x4794"}
+    A2 -- yes --> G4["Gzll_SwitchToId(ownID)<br/>state = 4"]
+    A2 -- no --> F2["stock: Pairing_Reset → state 1<br/>(patched: return, retry)"]
+
+    ST -- 4 --> P4["send 84 · flags · 19-byte report on OWN addr<br/>(retransmit: header |= 0x10)"]
+    P4 --> A4{"ack type 04?<br/>Pair_CheckAckStep4 0x47e0"}
+    A4 -- yes --> OK["Rumble_FromAck (bytes 3/4)<br/>bonded = 1, fail count = 0"]
+    A4 -- no --> F4{"fail rounds > limit?<br/>stock 16 · patched 254"}
+    F4 -- yes --> RS["Pairing_Reset → state 1"]
+    F4 -- no --> R4["return"]
