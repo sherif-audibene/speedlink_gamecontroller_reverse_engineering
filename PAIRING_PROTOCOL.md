@@ -122,7 +122,7 @@ Restore stock: same command with `firmware_dump/0x00000000_0x00040000_ROM.bin`.
 - **Waits for the ack to be transmitted** (TX FIFO empty) before flushing or changing the
   address. The ack leaves ~0.65 ms after RX at 250 kbps.
 - **Own ID stored in EEPROM**, so a Nano reset still finds a controller that is already streaming.
-- Serial 115200: `STATE …`, `tick 81:n 82:n 84:n` (packets/s per step), and `REP <hex>` when
+- Serial 115200: `STATE …`, `tick 81:n 82:n 84:n` (packets/s per step; off by default, `#define TICK_LOG 1`), and `REP <hex>` when
   the report changes.
 
 ### Input report (`REP` = 20 bytes after the `84` type byte; preliminary)

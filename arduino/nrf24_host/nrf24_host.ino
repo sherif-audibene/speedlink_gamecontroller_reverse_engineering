@@ -26,6 +26,7 @@ const uint8_t CHANNEL = 32;         // must match the controller patch @0x48c2 (
 RF24 radio(9, 10, 4000000);
 uint32_t ownId = 0;
 enum Role : uint8_t { PAIR, CONFIRM, STREAM } role = PAIR;
+#define TICK_LOG 0  // 1 = print "tick 81:n 82:n 84:n" (packets/s per step) every second
 uint32_t lastRx = 0, lastTick = 0;  // lastRx: last packet of the current role
 uint16_t cnt[3];          // packets seen per step this second
 uint8_t lastRep[20];
@@ -121,7 +122,7 @@ void loop() {
     else if (role == CONFIRM && ownId) setRole(STREAM);
     else setRole(PAIR);
   }
-  if (millis() - lastTick > 1000) {
+  if (TICK_LOG && millis() - lastTick > 1000) {
     lastTick = millis();
     Serial.print(F("tick 81:")); Serial.print(cnt[0]); Serial.print(F(" 82:")); Serial.print(cnt[1]);
     Serial.print(F(" 84:")); Serial.println(cnt[2]);

@@ -83,8 +83,9 @@ $AV/bin/avrdude -C $AV/etc/avrdude.conf -c arduino -p atmega168 -P $(/bin/ls /de
 ```
 ./venv/bin/python tools/readserial.py 40
 ```
-Expected sequence: `controller ownID=16670F` → `STATE confirm` → `STATE streaming` → `tick … 84:~180`
-and `REP …` lines that change as you press buttons.
+Expected sequence: `controller ownID=16670F` → `STATE confirm` → `STATE streaming`
+and `REP …` lines that change as you press buttons. (Packet counters `tick 81:n 82:n 84:n`, ~180/s
+while streaming, are off by default: set `TICK_LOG 1` in the sketch and rebuild to see them.)
 - The Nano learns the controller's ID the first time and keeps it in EEPROM.
 - In D mode, press **Home** once while connected to get an analog right stick (LED3 on).
 
@@ -92,7 +93,7 @@ and `REP …` lines that change as you press buttons.
 
 | Symptom | Fix |
 |---|---|
-| Ticks stay `81:0 82:0 84:0` | Controller off or not latched on. Hold Home ~3 s, or power-cycle |
+| No `STATE`/`REP` lines (with `TICK_LOG 1`: ticks stay `81:0 82:0 84:0`) | Controller off or not latched on. Hold Home ~3 s, or power-cycle |
 | `known ownID=0` while the controller is already streaming | Power-cycle the controller so it pairs again from step 1 |
 | Used to work, now never pairs | **Bond wipe**: with an image built before the `0x3908` fix, switching off by holding Home saves host ID 0 (`FIRMWARE_FLOW.md` §3). Check with `read32 0x3fc00 20` (`+4` should be `00abcdef`) and redo step 2 with the current image |
 | pyocd "Target not detected" / timeout | Reseat the SWD wires, replug the ST-Link, keep `-f 100k` |
