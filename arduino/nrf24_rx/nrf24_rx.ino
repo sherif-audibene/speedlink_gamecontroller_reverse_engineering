@@ -1,3 +1,5 @@
+// HISTORICAL (day 1/2): 010276 @ 2M is NOT the controller's pairing link (that is 250k,
+// 5-byte addr - see PAIRING_PROTOCOL.md / nrf24_host). Kept for the record.
 // Act as ESB receiver/host for the controller: RX on addr 010276, ch32, 2M, auto-ack ON.
 // Goal: ack the controller so it leaves beacon mode and streams button data.
 // CE=9 CSN=10 SCK=13 MOSI=11 MISO=12, SPI 4MHz.

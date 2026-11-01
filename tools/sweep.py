@@ -1,3 +1,5 @@
+# RF phase (day 1/2): sweep candidate ack payloads via nrf24_pair on the 2M/010276 guess
+# (not the real 250 kbps link - see PAIRING_PROTOCOL.md). Same bootloader caveat as sustain.py.
 import serial,time,glob
 P=sorted(glob.glob("/dev/cu.wchusbserial*")+glob.glob("/dev/cu.usbserial*"))[0]
 s=serial.Serial(P,115200,timeout=0.2)

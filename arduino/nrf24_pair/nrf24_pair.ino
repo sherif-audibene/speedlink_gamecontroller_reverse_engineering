@@ -1,22 +1,26 @@
 // Gazell/ESB pairing harness v2 - reliable ack-payload delivery.
-// PRX on addr 010276, ch32, 2M, CRC16, auto-ack WITH configurable ack payload.
+// PRX, CRC16, auto-ack WITH configurable ack payload. Defaults: addr 010276, ch32, 2M
+// (the day-1/2 guess). The controller's real pairing link is `R2` + `AC6C2C1E7E7`
+// (250k, 5-byte) - see PAIRING_PROTOCOL.md. Used on day 3 to find that address.
 // Keeps ack FIFO topped; does NOT print every packet (that starved the FIFO).
 // Reports only NEW distinct payloads + periodic counts. Also listens pipe2 for
 // post-pairing data address.
 // Serial cmds: K<hex>=ack payload (differentiated: see KA/KF), C<dec>=channel,
 //   KF<hex>=ack payload used in response to 1-byte "fetch" packets,
 //   KA<hex>=ack payload used in response to other packets,
-//   D<hex>=pipe2 data addr, P=print cfg, Z=reset counters.
+//   D<hex>=pipe2 data addr, A<hex>=main listen addr (3-5 B, MSB first as on
+//   the uint64, e.g. AE7C1C2C6E7), R<n>=rate 0=1M 1=2M 2=250k, P=print cfg,
+//   Z=reset counters.
 // CE=9 CSN=10 SCK=13 MOSI=11 MISO=12.
 #include <SPI.h>
 #include <RF24.h>
 RF24 radio(9, 10, 4000000);
-const uint64_t PAIR_ADDR = 0x010276ULL;
+uint64_t pairAddr = 0x010276ULL; uint8_t pairAW = 3;  // A<hex> changes it
 
 uint8_t ackA[32], ackAl=0;     // ack for multi-byte request packets
 uint8_t ackF[32], ackFl=0;     // ack for 1-byte fetch packets
 uint64_t dataAddr=0; uint8_t dataAW=0;
-uint8_t chan=32;
+uint8_t chan=32; uint8_t rate=1;  // R<n>: 0=1M 1=2M 2=250k
 char line[90]; uint8_t li=0;
 
 // distinct-payload tracker
@@ -26,15 +30,15 @@ uint8_t parseHex(char*s,uint8_t*out){ uint8_t n=0; while(*s&&*(s+1)&&n<32){ out[
 
 void applyCfg(){
   radio.stopListening();
-  radio.setAddressWidth(3);
+  radio.setAddressWidth(pairAW);
   radio.setChannel(chan);
-  radio.setDataRate(RF24_2MBPS);
+  radio.setDataRate(rate==0?RF24_1MBPS:rate==2?RF24_250KBPS:RF24_2MBPS);
   radio.setCRCLength(RF24_CRC_16);
   radio.setAutoAck(true);
   radio.enableDynamicPayloads();
   radio.enableAckPayload();
-  radio.openReadingPipe(1, PAIR_ADDR);
-  if(dataAW){ radio.setAddressWidth(dataAW); radio.openReadingPipe(2, dataAddr); radio.setAddressWidth(3);}
+  radio.openReadingPipe(1, pairAddr);
+  if(dataAW){ radio.setAddressWidth(dataAW); radio.openReadingPipe(2, dataAddr); radio.setAddressWidth(pairAW);}
   radio.setPALevel(RF24_PA_HIGH);
   radio.startListening();
 }
@@ -77,8 +81,10 @@ void loop(){
         else if(line[0]=='K'){ ackAl=parseHex(line+1,ackA); ackFl=ackAl; for(uint8_t k=0;k<ackAl;k++)ackF[k]=ackA[k]; }
         else if(line[0]=='C'){ chan=atoi(line+1); applyCfg(); }
         else if(line[0]=='D'){ uint8_t tmp[5]; uint8_t n=parseHex(line+1,tmp); dataAW=n; dataAddr=0; for(int i=n-1;i>=0;i--)dataAddr=(dataAddr<<8)|tmp[i]; applyCfg(); }
+        else if(line[0]=='A'){ uint8_t tmp[5]; uint8_t n=parseHex(line+1,tmp); if(n>=3){ pairAW=n; pairAddr=0; for(uint8_t i=0;i<n;i++)pairAddr=(pairAddr<<8)|tmp[i]; nSeen=0; applyCfg(); } }
+        else if(line[0]=='R'){ rate=atoi(line+1); nSeen=0; applyCfg(); }
         else if(line[0]=='Z'){ nSeen=0; }
-        else if(line[0]=='P'){ Serial.print("chan="); Serial.print(chan); Serial.print(" ackA="); Serial.print(ackAl); Serial.print(" ackF="); Serial.print(ackFl); Serial.print(" dataAW="); Serial.println(dataAW); }
+        else if(line[0]=='P'){ Serial.print("chan="); Serial.print(chan); Serial.print(" rate="); Serial.print(rate); Serial.print(" ackA="); Serial.print(ackAl); Serial.print(" ackF="); Serial.print(ackFl); Serial.print(" dataAW="); Serial.print(dataAW); Serial.print(" pairAW="); Serial.print(pairAW); Serial.print(" addr="); Serial.print((uint32_t)(pairAddr>>32),HEX); Serial.println((uint32_t)pairAddr,HEX); }
         Serial.print("ok:"); Serial.println(line);
         li=0; }
     } else if(li<sizeof(line)-1) line[li++]=c;

@@ -1,3 +1,6 @@
+# RF phase (day 1/2): like decode_ch32.py but brute-forces ANY 3/4/5-byte address with
+# valid CRC from the promiscuous capture. Only ever ran at 2M, so it could not see the
+# controller's real 250 kbps link (PAIRING_PROTOCOL.md). Usage: broad_decode.py [sec] [label]
 import serial,time,glob,sys
 from collections import Counter
 dur=float(sys.argv[1]) if len(sys.argv)>1 else 15

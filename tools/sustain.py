@@ -1,3 +1,6 @@
+# RF phase (day 1/2): sustained acking with a chosen ack payload via nrf24_pair while you
+# press buttons. Ran on the 2M/010276 guess, not the real 250 kbps link. Caveat: sends its
+# command ~0.6 s after reset, which may be swallowed by the bootloader (see pairlog.py).
 import serial,time,glob,sys
 P=sorted(glob.glob("/dev/cu.wchusbserial*")+glob.glob("/dev/cu.usbserial*"))[0]
 s=serial.Serial(P,115200,timeout=0.2)

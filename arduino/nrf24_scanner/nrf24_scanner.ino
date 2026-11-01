@@ -1,4 +1,7 @@
-// Promiscuous sniffer PARKED on Gazell default channel table {4,25,42,63,77}.
+// Promiscuous sniffer (2-byte-address trick), now parked on ch32 @ 2M (CHANS below).
+// NOTE (day 3): the controller's pairing link is 250 kbps; this 2M sniffer found the
+// unexplained 010276 traffic, not that link. Header originally said "Gazell default
+// channel table {4,25,42,63,77}" - CHANS was later narrowed to {32}.
 // Long dwell so a hopping device is caught every time it lands here.
 // CE=9 CSN=10 SCK=13 MOSI=11 MISO=12, SPI 4MHz.
 #include <SPI.h>

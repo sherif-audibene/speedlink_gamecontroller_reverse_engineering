@@ -7,7 +7,8 @@ Dump files in `firmware_dump/`:
 - `0x00000000_0x00040000_ROM.bin` — 256 KB flash (the firmware; code+data occupy ~27 KB)
 - `0x10000000_..._FICR.bin`, `0x10001000_..._UICR.bin` — factory / user config
 - `0x20000000_..._RAM.bin` — 32 KB RAM captured while running in pairing mode
-- live PERIPH/GPIO register snapshots, `nrfsec_dump.log`
+- live PERIPH/GPIO register snapshots, `nrfsec_dump.log` (the RADIO was powered down in
+  that PERIPH snapshot, so it holds no radio config. Use `tools/radio_state.py` for live values.)
 
 ## Verified facts
 - Genuine firmware: reset vector `0x00000155`, initial SP `0x20000ef0`.
@@ -23,20 +24,46 @@ Dump files in `firmware_dump/`:
 - Only crypto-ish primitive: **hardware RNG** (`0x4000D000`), get-random routine at
   `0x69f4` (clear VALRDY `@0x4000D100`, start `@0x4000D000`, poll, read VALUE `@0x4000D500`).
 
-=> Pairing is a **plain, non-crypto** process. **There is no key to recover.** The RF link
-is **stock Nordic Gazell with default parameters** (base0 `E7E7E7E7`, base1 `C2C2C2C2`,
-prefixes `E7 C2..C8`, 2 Mbit, 600 µs timeslot, default channel table); the app-level beacon
-format (`E9 74 …`) is Speedlink's own but unencrypted. "Connected/streaming" = Gazell
-link-layer timeslot sync — which the Nano+nRF24 cannot perform.
+=> Pairing is a **plain, non-crypto** process. **There is no key to recover.**
+
+**Corrected on day 3** (see `PAIRING_PROTOCOL.md`). The link layer is an old Nordic
+**Gazell** whose init (`FUN_00000db8`) loads the Gazell defaults (base0 `E7E7E7E7`, base1
+`C2C2C2C2`, prefixes `E7 C2..C8`). The **application then overrides them**:
+- **250 kbps**, not 2 Mbit.
+- Its own 3-step pairing handshake on per-step addresses (pairing base `0xC1C2C6`, then
+  the host ID, then the controller's own ID).
+- Its own **per-packet channel hopping** (24-bit LFSR, `FUN_00004be4`).
+
+Day-1/2 statements that the link was "stock Gazell with default parameters, 2 Mbit, default
+channel table" and that "streaming = Gazell timeslot sync the Nano can't perform" were
+wrong. A Nano + nRF24 now acts as the host. The `E9 74 …` packets from the first RF phase are
+not part of this link (origin unexplained).
 
 ## Peripheral / code map
 - RADIO base `0x40001000` (config block `0x40001500`); RNG `0x4000D000`.
   ECB/CCM/AAR present in silicon but **unused**.
-- Radio driver ~`0x6980`–`0x6c84`; RX/TX config helpers at `0x698c` (TX) and `0x69c0` (RX)
-  writing PCNF0/PCNF1/RXADDRESSES. The 3-byte RF address `01:02:76` is DERIVED from the
-  chip DEVICEID at runtime (reads FICR at `0x6c72`/`0x6c82`), not stored as literal bytes.
+- `0x698c` / `0x69c0` (reached via `FUN_00004cd0`) are **raw radio TX/RX starters**
+  (set FREQUENCY/TXPOWER/MODE, then `TASKS_TXEN`/`RXEN`), probably a factory test mode,
+  not the Gazell driver. An earlier note called this region "the radio driver" and claimed it
+  derived the address `01:02:76` from FICR at `0x6c72`/`0x6c82`. That was wrong: `0x6c40..`
+  is a literal pool. The real ID derivation is `FUN_00004158`: own ID =
+  `(FICR.DEVICEID[0] ^ DEVICEID[1]) & 0xFFFFFF` = `0x16670F`.
 - Literal pools interleave with code, so flat disassembly misaligns — use Ghidra's
   control-flow recovery.
+
+## Pairing / radio app layer (day 3, details in `PAIRING_PROTOCOL.md`)
+| Function | Role |
+|---|---|
+| `FUN_00004514` | pairing state machine (1 pair → 2 confirm → 4 stream), one packet per call |
+| `FUN_0000483c` / `FUN_00004794` / `FUN_000047e0` | validate the host's ack payload for steps 1 / 2 / 4 |
+| `FUN_00004174` | reset to step 1 (pairing address) |
+| `FUN_000048a0` / `FUN_00004770` | switch radio to an ID's address / build the Gazell base from an ID |
+| `FUN_000048c0` → `FUN_0000027a` | set the channel (one-entry Gazell channel table) |
+| `FUN_00004be4` | 24-bit LFSR → next hop channel (2..80) |
+| `FUN_00004158` | own ID from FICR DEVICEID |
+| `FUN_000041c4` / `FUN_00003a78` | load the bond record from the last flash page `0x3FC00` |
+| `FUN_00002e24` | read a little-endian 24-bit ID |
+| `FUN_00004f50` / `FUN_00004700` | two startup paths that configure Gazell + pairing address (difference not analysed) |
 
 ## Input scan (how the inputs are decoded)
 Reimplemented/ported for the custom firmware and verified live over SWD.
@@ -67,7 +94,7 @@ Reimplemented/ported for the custom firmware and verified live over SWD.
   (x86_64). Ghidra 12.1.4 was used (GhidraMCP extension is version-pinned to 12.1.4).
 - Entry points / landmarks: Reset `0x154`, RADIO IRQ `0x2A10`, TIMER2 `0x26A2`,
   SWI0 (Gazell callback dispatch) `0x2CC0`, UART0 `0x5044`, assert/log helper `0x1F88`.
-- Gazell device-init at `FUN_00000db8` (sets the default addresses/channel table above).
+- Gazell device-init at `FUN_00000db8` (loads Gazell defaults; the app overrides them, see above).
   Annotated functions saved in the Ghidra project "speedlink": RADIO_IRQHandler,
   AddPacketToTxFifo, ConfigureRadioAddressChannel, GazellTxSuccessCallback,
   HandleGazellAssert, SWI0_GazellCallbackDispatch, Reset_Handler.

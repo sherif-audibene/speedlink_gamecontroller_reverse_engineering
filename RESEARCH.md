@@ -1,7 +1,8 @@
 # Reference links & prior art (Gazell / nRF51)
 
-Background gathered 2026-10-31. Conclusions here are current; see `FIRMWARE_ANALYSIS.md`
-for what the dump actually showed (stock Gazell, **no key, no crypto**).
+Background gathered 2026-10-31, updated 2026-11-01. See `FIRMWARE_ANALYSIS.md` for what
+the dump showed (**no key, no crypto**) and `PAIRING_PROTOCOL.md` for the actual pairing
+link: Gazell link layer + a Speedlink-specific handshake and channel hopping.
 
 ## Speedlink-specific
 - Nothing public: no teardown, protocol dump, or dongle recreation for any Speedlink
@@ -15,9 +16,12 @@ for what the dump actually showed (stock Gazell, **no key, no crypto**).
 - `gzp` pairing library (this controller does **not** use it — no crypto in our firmware):
   gzp.c https://github.com/wangdong/cpod/blob/master/lib/nrf24/gazell/common/gzp.c ·
   docs https://docs.nordicsemi.com/r/bundle/sdk_nrf5_v16.0.0/page/lib_gzp.html
-- To re-create the dongle: flash Nordic's stock Gazell **host** example onto an nRF52840
-  dongle (stock Gazell + default params → pairs out-of-box). The Nano+nRF24 cannot
-  host-sync Gazell.
+- ~~To re-create the dongle: flash Nordic's stock Gazell host example onto an nRF52840
+  dongle (pairs out-of-box). The Nano+nRF24 cannot host-sync Gazell.~~ **Disproved on day 3:**
+  a stock Gazell host would not pair, because the handshake, addresses (pairing base
+  `0xC1C2C6`, 250 kbps) and per-packet hopping are Speedlink-specific. The Nano+nRF24
+  **does** work as the host with the controller patched to one channel (`PAIRING_PROTOCOL.md`).
+  An nRF5x could still follow the stock hop LFSR without any controller patch.
 
 ## nRF51 SWD dump / unlock (used here)
 - **nrfsec** — non-destructive readback-protection bypass + mass-erase:

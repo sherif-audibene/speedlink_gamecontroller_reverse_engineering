@@ -1,3 +1,7 @@
+# RF phase (day 1/2): capture nrf24_scanner promiscuous output (ch32 @ 2M) and
+# CRC-recover packets for address 010276. This is how 010276 + E9 74 03 80... was found.
+# Day 3: that traffic is NOT the controller's pairing link (250 kbps, see PAIRING_PROTOCOL.md);
+# its source is unexplained. Usage: decode_ch32.py [sec] [label]
 import serial,time,glob,sys
 from collections import Counter
 dur=float(sys.argv[1]) if len(sys.argv)>1 else 10
