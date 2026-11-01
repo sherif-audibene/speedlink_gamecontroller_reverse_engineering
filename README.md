@@ -14,6 +14,7 @@ whose USB dongle was lost. Work done 2026-10-30 → 2026-11-01.
   on what it got wrong).
 - `ble_gamepad/README.md` — the BLE HID gamepad firmware (build/flash/status).
 - `RESEARCH.md` — prior-art and external reference links.
+- `LEARNING_GUIDE.md` — how to learn the skills used here (foundations, tools, practice path, exercises).
 
 ---
 
