@@ -78,7 +78,7 @@ void setup() {
   radio.setAutoAck(true);
   radio.enableDynamicPayloads();
   radio.enableAckPayload();
-  radio.setPALevel(RF24_PA_HIGH);
+  radio.setPALevel(RF24_PA_LOW);  // PA_HIGH: acks stopped reaching the controller (TX sag), 2026-11-03
   EEPROM.get(0, ownId);
   if (ownId > 0xFFFFFF) ownId = 0;  // blank EEPROM
   radio.startListening();

@@ -95,6 +95,7 @@ while streaming, are off by default: set `TICK_LOG 1` in the sketch and rebuild 
 |---|---|
 | No `STATE`/`REP` lines (with `TICK_LOG 1`: ticks stay `81:0 82:0 84:0`) | Controller off or not latched on. Hold Home ~3 s, or power-cycle |
 | `known ownID=0` while the controller is already streaming | Power-cycle the controller so it pairs again from step 1 |
+| Nano stuck on `STATE pairing`, controller `peek_pairing` shows `txres=2` | Nano hears but its acks don't arrive (nRF24 TX supply sag). Sketch now uses `RF24_PA_LOW`; add a 10 µF cap on the nRF24 VCC/GND if it recurs |
 | Used to work, now never pairs | **Bond wipe**: with an image built before the `0x3908` fix, switching off by holding Home saves host ID 0 (`FIRMWARE_FLOW.md` §3). Check with `read32 0x3fc00 20` (`+4` should be `00abcdef`) and redo step 2 with the current image |
 | pyocd "Target not detected" / timeout | Reseat the SWD wires, replug the ST-Link, keep `-f 100k` |
 | Never monitor with pyocd's default connect | It halts the CPU and the radio goes silent. The repo tools use `connect_mode="attach"` |
