@@ -6,7 +6,7 @@ Live battery readout from the stock firmware's RAM over SWD (attach, no halt).
                    states 1-3: 3..6 by ADC, 7 = charged; streaming (state 4): 1..3, 1 = critical -> power-off
   0x20000085  u8   raw (unconfirmed) level, must stay stable 200 ticks before it becomes 0x84
   0x2000008a  u16  low-pass filtered AIN1 (P0.27) ADC result, 10-bit
-                   states 1-3: <649 -> 3, 649..668 -> 4, 669..696 -> 5, >=697 -> 6
+                   states 1-3: <=648 -> 3, 649..669 -> 4, 670..696 -> 5, >=697 -> 6 (Battery_Update 0x3472..0x3496)
                    (seen on hw: adc=687 -> level 5)
   0x20000090  4xu8 level history (streaming only)
   0x20000068  u8   system state (1/2 pairing, 4 streaming, 5/6 off)
